@@ -15,11 +15,14 @@ export interface ModelInstance {
 
 const models = new Map<SpeciesId, ModelEntry>()
 
+/** Khách 6 loài + lửng (đặc vụ cốt truyện) */
+const MODEL_IDS: SpeciesId[] = [...SPECIES_IDS, 'badger']
+
 /** Tải model glTF do Blender xuất (public/models/<loài>.glb). Loài nào thiếu sẽ dùng nhân vật procedural. */
 export async function loadCharacterModels(base = `${import.meta.env.BASE_URL}models/`): Promise<number> {
   const loader = new GLTFLoader()
   await Promise.all(
-    SPECIES_IDS.map(async (id) => {
+    MODEL_IDS.map(async (id) => {
       try {
         const gltf = await loader.loadAsync(`${base}${id}.glb`)
         gltf.scene.traverse((o) => {

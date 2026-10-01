@@ -47,6 +47,11 @@ SPECIES = {
                  ear='wide', earInner=0xE8D8B8, tail='flag', tailTip=0xFFFFFF,
                  snout='medium', mask=0xE8D8B8, spots=True, antlers=True,
                  torso=(0.275, 0.42, 0.26), hips=(0.26, 0.16, 0.24)),
+    # Đặc vụ cốt truyện: lửng mặt trắng, dải sọc đen ngang mắt (kênh alpha của mặt nạ)
+    'badger': dict(fur=0x474C55, belly=0x8F959D, snoutColor=0xECECEC, nose=0x111111,
+                   ear='round', earInner=0xCFCFCF, tail='bushy', tailTip=0xBFBFBF,
+                   snout='medium', mask=0xECECEC, band=0x1C1C1C,
+                   torso=(0.32, 0.41, 0.3), hips=(0.3, 0.17, 0.26)),
 }
 
 HEAD = Vector((0.0, 1.84, 0.0))
@@ -383,7 +388,7 @@ def soft(d, edge=0.25):
 
 
 def paint_masks(body, spec, snout_c, snout_r):
-    """Vertex color làm mặt nạ vùng màu: R = bụng (và đốm), G = mảng mặt, B = mõm.
+    """Vertex color làm mặt nạ vùng màu: R = bụng (và đốm), G = mảng mặt, B = mõm, A = dải ngang mắt.
     Game trộn màu theo mặt nạ nên ranh giới mượt thay vì răng cưa theo mặt tam giác."""
     me = body.data
     attr = me.color_attributes.new(name='Mask', type='FLOAT_COLOR', domain='POINT')
@@ -399,7 +404,8 @@ def paint_masks(body, spec, snout_c, snout_r):
                 belly = max(belly, soft((p - V3(s)).length / 0.07, 0.25))
         mask = soft(ell_dist(p, (0, HEAD.y - 0.12, 0.2), (0.27, 0.2, 0.3)), 0.25) if 'mask' in spec else 0.0
         snout = soft(ell_dist(p, snout_c, sr), 0.25) if p.z > HEAD.z + 0.12 else 0.0
-        attr.data[v.index].color = (belly, mask, snout, 1.0)
+        band = soft(ell_dist(p, (0, HEAD.y + 0.07, 0.2), (0.31, 0.085, 0.32)), 0.3) if 'band' in spec else 0.0
+        attr.data[v.index].color = (belly, mask, snout, band)
     me.color_attributes.active_color = attr
 
 

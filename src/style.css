@@ -184,6 +184,22 @@ body {
 #dialog .text.pop {
   animation: pop 0.18s ease-out;
 }
+#dialog .text .next {
+  display: inline-block;
+  margin-left: 8px;
+  color: var(--gold);
+  font-size: 14px;
+  animation: bob 0.9s ease-in-out infinite;
+}
+@keyframes bob {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(3px);
+  }
+}
 @keyframes pop {
   from {
     transform: translateY(4px);

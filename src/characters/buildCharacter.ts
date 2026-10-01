@@ -11,7 +11,8 @@ export interface HeadLook {
   pitch: number
 }
 
-export type Accessory = 'bowtie' | 'scarf' | 'sash' | 'suspenders' | 'hat' | 'beret'
+export type Accessory = 'bowtie' | 'scarf' | 'sash' | 'suspenders' | 'hat' | 'beret' | 'coat' | 'shades'
+/** Phụ kiện khách ngẫu nhiên (áo khoác và kính đen dành cho nhân vật cốt truyện) */
 export const ACCESSORIES: Accessory[] = ['bowtie', 'scarf', 'sash', 'suspenders', 'hat', 'beret']
 export const ACCENT_COLORS = [0xe63946, 0x2a9d8f, 0xe9c46a, 0x457b9d, 0x8d5a97, 0xf4a261, 0x1d3557, 0x6a994e]
 
@@ -19,6 +20,15 @@ export const ACCENT_COLORS = [0xe63946, 0x2a9d8f, 0xe9c46a, 0x457b9d, 0x8d5a97, 
 export interface CharacterLook {
   accessory: Accessory | null
   accent: number
+  /** Phụ kiện thêm (đặc vụ: áo khoác + mũ + kính) */
+  extras?: Accessory[]
+}
+
+function allAccessories(look: CharacterLook): Accessory[] {
+  const list: Accessory[] = []
+  if (look.accessory) list.push(look.accessory)
+  if (look.extras) list.push(...look.extras)
+  return list
 }
 
 export interface CharacterRig {
@@ -73,14 +83,16 @@ function bodyMaterial(furColor: number, species: SpeciesDef): THREE.MeshToonMate
   const belly = new THREE.Color(species.bellyColor)
   const mask = new THREE.Color(species.maskColor ?? species.furColor)
   const snout = new THREE.Color(species.snoutColor)
+  const band = new THREE.Color(species.bandColor ?? species.furColor)
   m.onBeforeCompile = (shader) => {
     shader.uniforms.bellyColor = { value: belly }
     shader.uniforms.maskColor = { value: mask }
     shader.uniforms.snoutColor = { value: snout }
+    shader.uniforms.bandColor = { value: band }
     shader.fragmentShader = shader.fragmentShader
       .replace(
         '#include <color_pars_fragment>',
-        '#include <color_pars_fragment>\nuniform vec3 bellyColor;\nuniform vec3 maskColor;\nuniform vec3 snoutColor;',
+        '#include <color_pars_fragment>\nuniform vec3 bellyColor;\nuniform vec3 maskColor;\nuniform vec3 snoutColor;\nuniform vec3 bandColor;',
       )
       .replace(
         '#include <color_fragment>',
@@ -88,6 +100,9 @@ function bodyMaterial(furColor: number, species: SpeciesDef): THREE.MeshToonMate
         regionColor = mix(regionColor, bellyColor, vColor.r);
         regionColor = mix(regionColor, maskColor, vColor.g);
         regionColor = mix(regionColor, snoutColor, vColor.b);
+        #ifdef USE_COLOR_ALPHA
+        regionColor = mix(regionColor, bandColor, vColor.a);
+        #endif
         diffuseColor.rgb = regionColor;`,
       )
   }
@@ -304,23 +319,38 @@ function addGreyPatch(head: THREE.Object3D): void {
 function addHeadAccessory(head: THREE.Object3D, look: CharacterLook): void {
   const accent = mat(look.accent, SMOOTH)
   const accentDark = mat(darken(look.accent, 0.6), SMOOTH)
-  if (look.accessory === 'hat') {
-    const g = new THREE.Group()
-    g.position.set(0, 0.3, 0)
-    g.rotation.z = 0.1
-    g.rotation.x = -0.08
-    g.add(m(new THREE.CylinderGeometry(0.33, 0.33, 0.025, 24), accentDark, 0, 0, 0))
-    g.add(m(new THREE.CylinderGeometry(0.21, 0.23, 0.18, 24), accentDark, 0, 0.1, 0))
-    g.add(m(new THREE.CylinderGeometry(0.235, 0.235, 0.04, 24), accent, 0, 0.035, 0))
-    head.add(g)
-  } else if (look.accessory === 'beret') {
-    const g = new THREE.Group()
-    g.position.set(0.05, 0.33, -0.02)
-    g.rotation.z = 0.28
-    g.add(sphere(0.3, accent, 0, 0, 0, 1, 0.42, 1, 20))
-    g.add(m(new THREE.CylinderGeometry(0.24, 0.26, 0.05, 20), accentDark, 0, -0.04, 0))
-    g.add(sphere(0.022, accentDark, 0, 0.13, 0, 1, 1, 1, 8))
-    head.add(g)
+  for (const acc of allAccessories(look)) {
+    if (acc === 'hat') {
+      const g = new THREE.Group()
+      g.position.set(0, 0.3, 0)
+      g.rotation.z = 0.1
+      g.rotation.x = -0.08
+      g.add(m(new THREE.CylinderGeometry(0.33, 0.33, 0.025, 24), accentDark, 0, 0, 0))
+      g.add(m(new THREE.CylinderGeometry(0.21, 0.23, 0.18, 24), accentDark, 0, 0.1, 0))
+      g.add(m(new THREE.CylinderGeometry(0.235, 0.235, 0.04, 24), accent, 0, 0.035, 0))
+      head.add(g)
+    } else if (acc === 'beret') {
+      const g = new THREE.Group()
+      g.position.set(0.05, 0.33, -0.02)
+      g.rotation.z = 0.28
+      g.add(sphere(0.3, accent, 0, 0, 0, 1, 0.42, 1, 20))
+      g.add(m(new THREE.CylinderGeometry(0.24, 0.26, 0.05, 20), accentDark, 0, -0.04, 0))
+      g.add(sphere(0.022, accentDark, 0, 0.13, 0, 1, 1, 1, 8))
+      head.add(g)
+    } else if (acc === 'shades') {
+      // Kính đen: hai mắt kính tròn che trước mắt, cầu nối và gọng về sau tai
+      const frame = mat(0x101010, SMOOTH)
+      for (const sx of [-1, 1]) {
+        const lens = m(new THREE.CylinderGeometry(0.078, 0.078, 0.008, 18), frame, sx * 0.14, 0.07, 0.385)
+        lens.rotation.x = Math.PI / 2
+        lens.rotation.z = sx * 0.16
+        head.add(lens)
+        const temple = m(new THREE.BoxGeometry(0.012, 0.012, 0.3), frame, sx * 0.3, 0.09, 0.2)
+        temple.rotation.y = sx * 0.35
+        head.add(temple)
+      }
+      head.add(m(new THREE.BoxGeometry(0.08, 0.012, 0.012), frame, 0, 0.08, 0.385))
+    }
   }
 }
 
@@ -337,7 +367,35 @@ function addBodyAccessory(parent: THREE.Object3D, look: CharacterLook, torsoScal
     o.position.y -= 1.0
     return o
   }
-  switch (look.accessory) {
+  for (const acc of allAccessories(look)) addOneBodyAccessory(acc, parent, target, shift, accent, accentDark)
+}
+
+function addOneBodyAccessory(
+  acc: Accessory,
+  parent: THREE.Object3D,
+  target: THREE.Object3D,
+  shift: (o: THREE.Object3D) => THREE.Object3D,
+  accent: THREE.Material,
+  accentDark: THREE.Material,
+): void {
+  switch (acc) {
+    case 'coat': {
+      // Áo khoác dài kín ngực, phủ qua hông, có cổ áo, thắt lưng và huy hiệu
+      target.add(shift(sphere(0.33, accent, 0, 0.92, -0.02, 1.1, 1.55, 1.02, 24)))
+      for (const sx of [-1, 1]) {
+        const collar = m(new THREE.BoxGeometry(0.16, 0.06, 0.07), accentDark, sx * 0.12, 1.42, 0.2)
+        collar.rotation.z = sx * -0.35
+        collar.rotation.x = 0.3
+        target.add(shift(collar))
+      }
+      const belt = m(new THREE.TorusGeometry(0.355, 0.025, 8, 28), accentDark, 0, 0.78, -0.02)
+      belt.rotation.x = Math.PI / 2
+      belt.scale.set(1, 1, 0.98)
+      target.add(shift(belt))
+      target.add(shift(m(new THREE.BoxGeometry(0.07, 0.06, 0.03), mat(0xd4af37, SMOOTH), 0, 0.78, 0.34)))
+      target.add(shift(sphere(0.035, mat(0xd4af37, SMOOTH), -0.13, 1.2, 0.33, 1, 1, 0.5, 10)))
+      break
+    }
     case 'bowtie': {
       const g = new THREE.Group()
       g.position.set(0, 1.44, 0.24)
@@ -386,6 +444,7 @@ function addBodyAccessory(parent: THREE.Object3D, look: CharacterLook, torsoScal
     default:
       break
   }
+  void parent
 }
 
 /** Manh mối: khóa kéo sau lưng, ba đoạn ôm theo lưng, có con trượt và khoen kéo. */
@@ -580,6 +639,7 @@ function buildProcedural(
   body.add(head)
   head.add(sphere(0.36, fur, 0, 0, 0, 1, 0.94, 0.96, 28))
   if (maskM) head.add(sphere(0.25, maskM, 0, -0.1, 0.2, 1.0, 0.75, 0.6, 20))
+  if (species.bandColor !== undefined) head.add(sphere(0.31, mat(species.bandColor, SMOOTH), 0, 0.07, 0.08, 1, 0.3, 0.95, 24))
   switch (species.snout) {
     case 'long':
       head.add(sphere(0.14, snoutM, 0, -0.1, 0.34, 1.0, 0.78, 1.4, 18))

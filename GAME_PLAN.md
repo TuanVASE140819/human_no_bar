@@ -174,6 +174,17 @@ Bản đầu giữ đêm ngắn (90 giây) và dễ đọc. Nếu người chơi
 | 6    | Lễ hội "Ngày chiến thắng"  | Khách gấp rưỡi, người giả gấp đôi                    |
 | 7    | Đêm cuối                   | 3 đợt lớn, có kẻ dùng xà beng phá nhanh gấp đôi      |
 
+### 2.6b Dẫn chuyện: Đặc vụ Lửng (đã làm 02/10/2026)
+
+Nhân vật cốt truyện là lửng mặt trắng sọc đen, áo khoác dài, mũ phớt, kính đen, thuộc "Cục Kiểm Soát Nhân Loại". Mỗi sáng sau khi bấm Mở cửa, đặc vụ bước vào quầy trước khách (đồng hồ dừng, chưa sinh khách, không bắn được):
+
+| Ngày | Nội dung thoại                                                                                                   |
+| ---- | ---------------------------------------------------------------------------------------------------------------- |
+| 1    | Bối cảnh (chiến tranh, người chui vào costume), quán là chốt kiểm soát, luật thưởng phạt, cách soi manh mối       |
+| 2–7  | Báo cáo hôm qua (khách phục vụ, người bắt, bắn nhầm, người lọt, khách bỏ về) + tình tiết riêng của ngày + tạm biệt |
+
+Dữ liệu ở `src/data/story.ts`; hộp thoại chữ chạy, bấm E / chuột trái để tiếp. Có thể mở rộng: đặc vụ phản ứng theo sự kiện đặc biệt (thanh tra, thị trưởng, lễ hội) và kết thúc riêng khi thắng hoặc thua.
+
 ### 2.7 Điều khiển
 
 | Phím             | Hành động                                                                  |

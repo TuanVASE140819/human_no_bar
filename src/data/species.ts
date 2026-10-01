@@ -1,6 +1,9 @@
 import type { DrinkId } from './drinks'
 
-export type SpeciesId = 'bear' | 'fox' | 'rabbit' | 'boar' | 'wolf' | 'deer'
+/** Loài khách ngẫu nhiên */
+export type CustomerSpeciesId = 'bear' | 'fox' | 'rabbit' | 'boar' | 'wolf' | 'deer'
+/** Mọi loài có model, kể cả nhân vật cốt truyện (lửng = đặc vụ) */
+export type SpeciesId = CustomerSpeciesId | 'badger'
 export type EarShape = 'round' | 'pointed' | 'long' | 'small' | 'wide'
 export type TailShape = 'stub' | 'bushy' | 'puff' | 'short' | 'long' | 'flag'
 export type SnoutShape = 'long' | 'medium' | 'short' | 'flat'
@@ -28,6 +31,8 @@ export interface SpeciesDef {
   snout: SnoutShape
   /** Mảng lông sáng quanh mõm và má (cáo, sói, hươu) */
   maskColor?: number
+  /** Dải lông sẫm ngang mắt (lửng) */
+  bandColor?: number
   eyeColor: number
   cheeks?: CheekStyle
   buckTeeth?: boolean
@@ -47,7 +52,7 @@ export interface SpeciesDef {
   antlers?: boolean
 }
 
-export const SPECIES: Record<SpeciesId, SpeciesDef> = {
+export const SPECIES: Record<CustomerSpeciesId, SpeciesDef> = {
   bear: {
     id: 'bear',
     name: 'Gấu',
@@ -217,4 +222,4 @@ export const SPECIES: Record<SpeciesId, SpeciesDef> = {
   },
 }
 
-export const SPECIES_IDS = Object.keys(SPECIES) as SpeciesId[]
+export const SPECIES_IDS = Object.keys(SPECIES) as CustomerSpeciesId[]

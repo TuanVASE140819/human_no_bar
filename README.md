@@ -19,7 +19,13 @@ npm run dev        # http://localhost:5180
 npm run build      # tsc + vite build -> dist/
 ```
 
-Tham số địa chỉ hữu ích: `?debug` vào ca ngay, `?lineup` xếp 6 loài trước quầy, `?nofx` tắt hậu kỳ, `?nomodels` dùng nhân vật procedural.
+Tham số địa chỉ hữu ích: `?debug` vào ca ngay (thêm `&intro` để giữ cảnh đặc vụ), `?lineup` xếp 6 loài trước quầy, `?nofx` tắt hậu kỳ, `?nomodels` dùng nhân vật procedural.
+
+## Cốt truyện
+
+Mỗi sáng, **Đặc vụ Lửng** của Cục Kiểm Soát Nhân Loại bước vào quầy trước khi khách tới. Ngày 1 ông ta kể bối cảnh và
+luật chơi; các ngày sau báo cáo hậu quả hôm trước (người lọt, bắn nhầm, khách bỏ về) và hé lộ tình tiết mới của ngày.
+Lời thoại nằm trong `src/data/story.ts`, đồng hồ trong quán dừng khi đặc vụ nói, bấm **E** để tiếp.
 
 ## Dựng lại model nhân vật bằng Blender
 

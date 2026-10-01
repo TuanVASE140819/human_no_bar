@@ -13,7 +13,8 @@ function start(): void {
   if (params.has('lineup')) {
     game.debugLineup()
   } else if (params.has('debug')) {
-    game.debugStart()
+    // ?debug bỏ qua menu; thêm &intro để vẫn có cảnh đặc vụ mở đầu
+    game.debugStart(params.has('intro'))
   }
 }
 

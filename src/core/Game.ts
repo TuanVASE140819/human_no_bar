@@ -19,7 +19,9 @@ import {
   REP_SLIPPED,
   REP_SERVED,
   REP_WALKOUT,
+  type DayStats,
 } from '@/systems/Economy'
+import { AGENT_NAME, agentSpec, introLines, dailyLines } from '@/data/story'
 import { DayClock } from '@/systems/DayClock'
 import { dayConfig, TOTAL_DAYS } from '@/data/difficulty'
 import { DRINKS } from '@/data/drinks'
@@ -69,8 +71,16 @@ export class Game {
   private totalCaught = 0
   private doorUsers = 0
   private debug = false
+  private forceIntro = false
   /** Màn trưng bày nhân vật: không sinh khách, không đóng cửa */
   private lineup = false
+
+  /** Cảnh cốt truyện: đặc vụ ghé quán mỗi sáng, đồng hồ dừng, chưa sinh khách */
+  private agent: Customer | null = null
+  private cutscene = false
+  private lines: string[] = []
+  private lineIndex = 0
+  private yesterday: DayStats | null = null
 
   private readonly doorIn = new THREE.Vector3(0.3, 0, -3.6)
   private readonly spawnIn = new THREE.Vector3(0.3, 0, -5.4)
@@ -106,9 +116,10 @@ export class Game {
     requestAnimationFrame((t) => this.frame(t))
   }
 
-  /** Dùng khi chạy kiểm thử headless: bỏ qua menu, mở quán ngay. */
-  debugStart(): void {
+  /** Dùng khi chạy kiểm thử headless: bỏ qua menu, mở quán ngay. intro = vẫn chạy cảnh đặc vụ. */
+  debugStart(intro = false): void {
     this.debug = true
+    this.forceIntro = intro
     this.newGame()
     this.openBar()
   }
@@ -178,6 +189,73 @@ export class Game {
     this.input.requestLock()
     this.setHint()
     toast(`Ngày ${this.day}. Mở cửa.`, 'info', 2.5)
+    if (!this.lineup && (!this.debug || this.forceIntro)) this.startVisit()
+  }
+
+  // ---------- Cốt truyện: đặc vụ ghé quán ----------
+
+  private startVisit(): void {
+    this.cutscene = true
+    this.lines = this.day === 1 ? introLines() : dailyLines(this.day, this.yesterday)
+    this.lineIndex = 0
+    const a = new Customer(agentSpec(), this.scene, this.spawnIn)
+    a.lookTarget = this.player.camera.position
+    this.agent = a
+    this.useDoor(true)
+    a.walkTo(this.doorIn, () => {
+      this.useDoor(false)
+      a.walkTo(this.bar.counterSpot, () => {
+        if (this.agent !== a) return
+        a.state = 'waiting'
+        a.face(0)
+        this.showLine(0)
+      })
+    })
+    this.hud.setHint('Đặc vụ đang vào...')
+  }
+
+  private showLine(i: number): void {
+    const a = this.agent
+    if (!a) return
+    this.lineIndex = i
+    const line = this.lines[i]
+    this.dialog.say(AGENT_NAME, line, true)
+    this.dialog.setPrompt(true)
+    this.dialog.setPatience(null)
+    a.talk(Math.min(4, 0.6 + line.length / 42))
+    this.hud.setHint('<b>E</b> hoặc <b>chuột trái</b> để tiếp · <b>Tab</b> sổ tay')
+  }
+
+  private advanceLine(): void {
+    if (this.dialog.isTyping) {
+      this.dialog.finish()
+      return
+    }
+    if (this.lineIndex + 1 < this.lines.length) this.showLine(this.lineIndex + 1)
+    else this.endVisit()
+  }
+
+  private endVisit(): void {
+    const a = this.agent
+    this.cutscene = false
+    this.dialog.setPrompt(false)
+    tweens.delay(1.2, () => {
+      if (!this.current) this.dialog.hide()
+    })
+    if (a) {
+      a.state = 'leaving'
+      a.walkTo(this.doorOut, () => {
+        this.useDoor(true)
+        a.walkTo(this.spawnOut, () => {
+          this.useDoor(false)
+          a.remove()
+          if (this.agent === a) this.agent = null
+        })
+      })
+    }
+    this.spawnTimer = 2.0
+    if (this.day === 1) toast('Nhiệm vụ: trụ 7 ngày. Không để người lọt.', 'info', 4)
+    this.setHint()
   }
 
   private beginClosing(): void {
@@ -193,6 +271,7 @@ export class Game {
     const st = this.economy.stats
     if (st.slipped > 0) this.economy.addRep(REP_SLIPPED * st.slipped)
     this.clock.finish()
+    this.yesterday = { ...st }
     this.state = 'summary'
     this.hud.setVisible(false)
     this.input.releaseLock()
@@ -253,6 +332,8 @@ export class Game {
 
     this.current?.update(dt)
     for (const c of this.others) c.update(dt)
+    this.agent?.update(dt)
+    this.dialog.update(dt)
     this.effects.update(dt)
 
     this.postfx.render(dt)
@@ -260,12 +341,13 @@ export class Game {
   }
 
   private updateOpen(dt: number): void {
-    this.clock.update(dt)
+    // Đồng hồ dừng khi đặc vụ đang nói
+    if (!this.cutscene) this.clock.update(dt)
     this.lighting.update(this.clock.progress)
     this.bar.setClock(this.clock.minutes)
     this.hud.setTime(this.clock.label)
 
-    if (!this.current && !this.lineup) {
+    if (!this.current && !this.lineup && !this.cutscene) {
       if (this.queue.length > 0 && !this.clock.isOver) {
         this.spawnTimer -= dt
         if (this.spawnTimer <= 0) this.spawnNext()
@@ -539,6 +621,17 @@ export class Game {
     }
     if (this.journal.visible) return
 
+    if (this.cutscene) {
+      // Trong cảnh đặc vụ: E / chuột trái / Space để tiếp lời, không bắn, không gọi menu yêu cầu
+      if (inp.wasPressed('KeyE') || inp.wasPressed('Space') || inp.mousePressed[0]) {
+        if (this.agent?.state === 'waiting') this.advanceLine()
+      }
+      if (inp.wasPressed('Digit1')) this.setTool('hands')
+      if (inp.wasPressed('Digit2')) this.setTool('gun')
+      this.hud.setZoom(this.player.isZooming)
+      return
+    }
+
     if (this.request.visible) {
       if (inp.wasPressed('Digit1')) this.doRequest('turn')
       else if (inp.wasPressed('Digit2')) this.doRequest('slogan')
@@ -561,6 +654,7 @@ export class Game {
   }
 
   private setHint(): void {
+    if (this.cutscene) return
     const c = this.current
     if (c && (c.state === 'waiting' || c.state === 'turning')) {
       this.hud.setHint(
@@ -585,6 +679,10 @@ export class Game {
     this.current = null
     for (const c of this.others) c.remove()
     this.others.length = 0
+    this.agent?.remove()
+    this.agent = null
+    this.cutscene = false
+    this.dialog.setPrompt(false)
     this.queue = []
     this.doorUsers = 0
     this.bar.closeDoor()
