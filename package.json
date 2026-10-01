@@ -1,0 +1,21 @@
+{
+  "name": "no-humans-bar",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host --port 5180",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview --port 5181",
+    "type-check": "tsc --noEmit",
+    "assets": "node tools/blender/run.mjs"
+  },
+  "dependencies": {
+    "three": "^0.170.0"
+  },
+  "devDependencies": {
+    "@types/three": "^0.170.0",
+    "typescript": "^5.6.3",
+    "vite": "^5.4.11"
+  }
+}

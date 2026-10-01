@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>No Humans Bar</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;700;800&display=swap" rel="stylesheet" />
+  </head>
+  <body>
+    <div id="app">
+      <canvas id="game"></canvas>
+
+      <div id="hud" class="hidden">
+        <div class="hud-tl">
+          <div id="hud-day" class="big"></div>
+          <div id="hud-time" class="big mono"></div>
+          <div id="hud-remaining"></div>
+        </div>
+        <div class="hud-tr">
+          <div id="hud-money" class="big"></div>
+          <div id="hud-rep"></div>
+          <div class="bar"><i id="hud-rep-bar"></i></div>
+        </div>
+        <div class="hud-br">
+          <div id="hud-tool"></div>
+          <div id="hud-ammo"></div>
+        </div>
+        <div id="crosshair"><i></i></div>
+        <div id="hint"></div>
+      </div>
+
+      <div id="dialog" class="hidden">
+        <div id="dialog-who" class="who"></div>
+        <div id="dialog-text" class="text"></div>
+        <div id="dialog-patience" class="patience"><i id="dialog-patience-bar"></i></div>
+      </div>
+
+      <div id="request" class="hidden">
+        <div class="title">Yêu cầu khách</div>
+        <ul id="request-list"></ul>
+      </div>
+
+      <div id="journal" class="hidden">
+        <div class="page">
+          <h3>Hồ sơ loài</h3>
+          <div id="journal-species"></div>
+        </div>
+        <div class="page">
+          <h3>Manh mối đã biết</h3>
+          <div id="journal-clues"></div>
+          <h3>Ghi chú hôm nay</h3>
+          <div id="journal-notes"></div>
+          <p class="close-hint">Tab để đóng</p>
+        </div>
+      </div>
+
+      <div id="toasts"></div>
+      <div id="flash"></div>
+
+      <div id="overlay" class="hidden">
+        <div id="overlay-panel" class="panel"></div>
+      </div>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
