@@ -1,7 +1,13 @@
 # No Humans Bar
 
+**Chơi ngay:** https://tuanvase140819.github.io/human_no_bar/ (Chrome hoặc Edge trên máy tính, cần chuột và bàn phím)
+
 Game quản lý quán bar + suy luận, góc nhìn thứ nhất, chạy trên trình duyệt. Bạn là gorilla chủ quán,
 khách là thú, nhưng một số là người mặc costume. Soi kỹ, hỏi khẽ, chỉ bóp cò khi chắc chắn.
+
+Cách chơi: bấm **Bắt đầu ca làm** rồi **Mở cửa**, trình duyệt sẽ khóa chuột để nhìn quanh. Khách đến quầy và gọi món:
+**Q** yêu cầu khách (quay người, đọc khẩu hiệu, trả lời câu hỏi), **chuột phải** giữ để soi, **Tab** mở sổ tay so hồ sơ loài,
+**E** phục vụ nếu là thú thật, **2** rút súng và **chuột trái** bắn nếu chắc đó là người. Bắn nhầm thú thật mất tiền và uy tín.
 
 Công nghệ: Vite + TypeScript + Three.js, đồ họa toon có viền, nhân vật dựng và rig bằng Blender (script Python).
 
