@@ -14,12 +14,18 @@ export class Customer {
   patience = PATIENCE_SECONDS
   readonly asked = { turn: false, slogan: false, question: false }
 
+  /** Điểm khách hướng mắt tới (vị trí camera người chơi), do Game gán */
+  lookTarget: THREE.Vector3 | null = null
+
   private target: THREE.Vector3 | null = null
   private onArrive: (() => void) | null = null
   private readonly speed = 1.7
   private walkT = 0
   private blinkTimer = rand(1.5, 4)
   private blinkLeft = 0
+  private blinkK = 0
+  private lookYaw = 0
+  private lookPitch = 0
   private facingTarget = 0
   private talkLeft = 0
   private readonly canBlink: boolean
@@ -110,19 +116,33 @@ export class Customer {
       this.rig.body.rotation.z *= 0.8
     }
 
+    // Đầu hướng về người chơi khi đang vào hoặc đứng chờ ở quầy
+    let yaw = 0
+    let pitch = 0
+    if (this.lookTarget && (this.state === 'waiting' || this.state === 'entering')) {
+      const local = root.worldToLocal(this.lookTarget.clone())
+      const dx = local.x
+      const dy = local.y - 1.84 * this.rig.baseScale
+      const dz = local.z
+      yaw = THREE.MathUtils.clamp(Math.atan2(dx, dz), -0.7, 0.7)
+      pitch = THREE.MathUtils.clamp(-Math.atan2(dy, Math.hypot(dx, dz)), -0.4, 0.35)
+    }
+    this.lookYaw = THREE.MathUtils.damp(this.lookYaw, yaw, 6, dt)
+    this.lookPitch = THREE.MathUtils.damp(this.lookPitch, pitch, 6, dt)
+
     // Tay chân, thở, gật đầu, há miệng do rig tự lo (procedural hoặc clip Blender)
-    this.rig.update(dt, moving, this.talkLeft > 0)
+    this.rig.update(dt, moving, this.talkLeft > 0, { yaw: this.lookYaw, pitch: this.lookPitch })
     if (this.talkLeft > 0) this.talkLeft -= dt
 
     if (this.canBlink) {
       this.blinkTimer -= dt
       if (this.blinkTimer <= 0) {
-        this.blinkLeft = 0.13
+        this.blinkLeft = 0.14
         this.blinkTimer = rand(2, 5)
       }
       if (this.blinkLeft > 0) this.blinkLeft -= dt
-      const sy = this.blinkLeft > 0 ? 0.12 : 1
-      for (const e of this.rig.eyes) e.scale.y += (sy - e.scale.y) * Math.min(1, dt * 40)
+      this.blinkK = THREE.MathUtils.damp(this.blinkK, this.blinkLeft > 0 ? 1 : 0, 35, dt)
+      this.rig.setBlink(this.blinkK)
     }
   }
 
@@ -135,6 +155,7 @@ export class Customer {
     // Biểu cảm hoảng: mày nhướng, mắt mở to, miệng há
     for (const b of this.rig.brows) b.position.y += 0.04
     for (const e of this.rig.eyes) e.scale.setScalar(1.15)
+    this.rig.setBlink(0)
     this.rig.setMouth(0.7)
     this.talkLeft = 0
     if (reveal) {

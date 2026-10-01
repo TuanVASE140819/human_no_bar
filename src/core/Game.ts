@@ -122,6 +122,7 @@ export class Game {
     this.player.pitch = -0.1
     SPECIES_IDS.forEach((id, i) => {
       const c = new Customer(showcaseSpec(SPECIES[id], i % 2 === 1), this.scene, new THREE.Vector3(-3.0 + i * 1.2, 0, -0.6))
+      c.lookTarget = this.player.camera.position
       c.state = 'waiting'
       c.face(0)
       c.root.rotation.y = 0
@@ -313,6 +314,7 @@ export class Game {
     const spec = this.queue.shift()
     if (!spec) return
     const c = new Customer(spec, this.scene, this.spawnIn)
+    c.lookTarget = this.player.camera.position
     this.current = c
     this.useDoor(true)
     c.walkTo(this.doorIn, () => {

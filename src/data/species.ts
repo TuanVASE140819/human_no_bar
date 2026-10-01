@@ -40,6 +40,8 @@ export interface SpeciesDef {
   weightKg: [number, number]
   /** Hệ số chiều cao so với mẫu chuẩn */
   height: number
+  /** Hệ số bề ngang thân so với mẫu chuẩn (khớp torso trong tools/blender/build_characters.py) */
+  torsoScale: number
   spots?: boolean
   tusks?: boolean
   antlers?: boolean
@@ -70,6 +72,7 @@ export const SPECIES: Record<SpeciesId, SpeciesDef> = {
     wrongAnswers: ['Tháng ba', 'Tôi không ngủ đông'],
     weightKg: [250, 350],
     height: 1.12,
+    torsoScale: 1.06,
   },
   fox: {
     id: 'fox',
@@ -98,6 +101,7 @@ export const SPECIES: Record<SpeciesId, SpeciesDef> = {
     wrongAnswers: ['Giữa trưa', 'Khi nào đói'],
     weightKg: [8, 12],
     height: 0.95,
+    torsoScale: 0.92,
   },
   rabbit: {
     id: 'rabbit',
@@ -125,6 +129,7 @@ export const SPECIES: Record<SpeciesId, SpeciesDef> = {
     wrongAnswers: ['Một con', 'Hai mươi con'],
     weightKg: [2, 4],
     height: 0.9,
+    torsoScale: 0.9,
   },
   boar: {
     id: 'boar',
@@ -149,6 +154,7 @@ export const SPECIES: Record<SpeciesId, SpeciesDef> = {
     wrongAnswers: ['Một sải tay', 'Tôi không có nanh'],
     weightKg: [90, 150],
     height: 1.0,
+    torsoScale: 1.06,
     tusks: true,
   },
   wolf: {
@@ -176,6 +182,7 @@ export const SPECIES: Record<SpeciesId, SpeciesDef> = {
     wrongAnswers: ['Khi mặt trời mọc', 'Tôi không hú'],
     weightKg: [40, 60],
     height: 1.05,
+    torsoScale: 0.97,
   },
   deer: {
     id: 'deer',
@@ -204,6 +211,7 @@ export const SPECIES: Record<SpeciesId, SpeciesDef> = {
     wrongAnswers: ['Giữa hè', 'Gạc không rụng'],
     weightKg: [60, 100],
     height: 1.1,
+    torsoScale: 0.89,
     spots: true,
     antlers: true,
   },

@@ -1,12 +1,18 @@
 import * as THREE from 'three'
 import type { SpeciesDef } from '@/data/species'
 import type { ClueId, Quirk } from '@/data/clues'
-import { mat, darken, disposeTree } from '@/render/materials'
+import { mat, darken, disposeTree, toonGradient } from '@/render/materials'
 import { rand } from '@/core/rand'
 import { hasModel, instantiateModel, type ModelInstance } from './models'
 
-export type Accessory = 'bowtie' | 'scarf' | 'vest' | 'suspenders' | 'hat' | 'beret'
-export const ACCESSORIES: Accessory[] = ['bowtie', 'scarf', 'vest', 'suspenders', 'hat', 'beret']
+/** Hướng đầu nhìn về người chơi (radian, trong không gian nhân vật) */
+export interface HeadLook {
+  yaw: number
+  pitch: number
+}
+
+export type Accessory = 'bowtie' | 'scarf' | 'sash' | 'suspenders' | 'hat' | 'beret'
+export const ACCESSORIES: Accessory[] = ['bowtie', 'scarf', 'sash', 'suspenders', 'hat', 'beret']
 export const ACCENT_COLORS = [0xe63946, 0x2a9d8f, 0xe9c46a, 0x457b9d, 0x8d5a97, 0xf4a261, 0x1d3557, 0x6a994e]
 
 /** Phụ kiện và màu nhấn riêng của từng khách, không liên quan manh mối. */
@@ -26,8 +32,10 @@ export interface CharacterRig {
   brows: THREE.Object3D[]
   /** 0 = ngậm, 1 = há to */
   setMouth(open: number): void
-  /** Animation mỗi khung: đi / đứng / nói */
-  update(dt: number, moving: boolean, talking: boolean): void
+  /** 0 = mở mắt, 1 = nhắm (mí trên kéo xuống) */
+  setBlink(k: number): void
+  /** Animation mỗi khung: đi / đứng / nói, đầu hướng về look nếu có */
+  update(dt: number, moving: boolean, talking: boolean, look: HeadLook | null): void
   baseScale: number
   furColor: number
   /** true khi dựng từ model Blender (glTF) */
@@ -45,8 +53,48 @@ const IVORY = 0xf2ead8
 const SMOOTH = { flat: false } as const
 /** Tâm đầu trong không gian thân (trước khi nhân species.height) */
 const HEAD_Y = 1.84
-/** Vị trí x của tay trong model Blender (ARM_X trong tools/blender/build_characters.py) */
-const MODEL_ARM_X = 0.45
+/** Vị trí x cổ tay và cánh tay trên trong model Blender, theo bề ngang thân (arm_xs trong tools/blender/build_characters.py) */
+function modelArmX(species: SpeciesDef): { wrist: number; upper: number } {
+  const t = species.torsoScale * 0.31
+  return { wrist: t + 0.11, upper: t + 0.13 }
+}
+
+const bodyMatCache = new Map<string, THREE.MeshToonMaterial>()
+
+/**
+ * Vật liệu thân cho model Blender: màu lông là màu chính, các vùng bụng / mảng mặt / mõm
+ * trộn theo mặt nạ vertex color (R, G, B) nên ranh giới mượt, không răng cưa theo tam giác.
+ */
+function bodyMaterial(furColor: number, species: SpeciesDef): THREE.MeshToonMaterial {
+  const key = `${furColor}|${species.id}`
+  const cached = bodyMatCache.get(key)
+  if (cached) return cached
+  const m = new THREE.MeshToonMaterial({ color: furColor, gradientMap: toonGradient(), vertexColors: true })
+  const belly = new THREE.Color(species.bellyColor)
+  const mask = new THREE.Color(species.maskColor ?? species.furColor)
+  const snout = new THREE.Color(species.snoutColor)
+  m.onBeforeCompile = (shader) => {
+    shader.uniforms.bellyColor = { value: belly }
+    shader.uniforms.maskColor = { value: mask }
+    shader.uniforms.snoutColor = { value: snout }
+    shader.fragmentShader = shader.fragmentShader
+      .replace(
+        '#include <color_pars_fragment>',
+        '#include <color_pars_fragment>\nuniform vec3 bellyColor;\nuniform vec3 maskColor;\nuniform vec3 snoutColor;',
+      )
+      .replace(
+        '#include <color_fragment>',
+        `vec3 regionColor = diffuseColor.rgb;
+        regionColor = mix(regionColor, bellyColor, vColor.r);
+        regionColor = mix(regionColor, maskColor, vColor.g);
+        regionColor = mix(regionColor, snoutColor, vColor.b);
+        diffuseColor.rgb = regionColor;`,
+      )
+  }
+  m.customProgramCacheKey = () => 'body-region-mask'
+  bodyMatCache.set(key, m)
+  return m
+}
 
 const DEFAULT_LOOK: CharacterLook = { accessory: null, accent: 0xe63946 }
 
@@ -119,11 +167,18 @@ function mouthSpot(species: SpeciesDef): { y: number; z: number } {
   }
 }
 
-/** Miệng tối + lưỡi, trả về hàm há miệng. Tọa độ cục bộ của đầu. */
+/** Miệng: khi ngậm là nét cười cong, khi nói há thành khoang tối có lưỡi. Tọa độ cục bộ của đầu. */
 function addMouth(head: THREE.Object3D, species: SpeciesDef): (open: number) => void {
   const { y, z } = mouthSpot(species)
-  const mouth = sphere(0.05, mat(MOUTH, SMOOTH), 0, y, z, 1, 0.18, 0.5, 14)
+  const mouthM = mat(MOUTH, SMOOTH)
+  const smile = new THREE.Mesh(new THREE.TorusGeometry(0.045, 0.0075, 6, 14, Math.PI), mouthM)
+  smile.position.set(0, y + 0.012, z)
+  smile.rotation.z = Math.PI
+  smile.castShadow = false
+  head.add(smile)
+  const mouth = sphere(0.05, mouthM, 0, y, z, 1, 0.18, 0.5, 14)
   mouth.castShadow = false
+  mouth.visible = false
   const tongue = sphere(0.032, mat(TONGUE, SMOOTH), 0, -0.45, 0.15, 1, 0.5, 1, 10)
   tongue.castShadow = false
   mouth.add(tongue)
@@ -135,13 +190,25 @@ function addMouth(head: THREE.Object3D, species: SpeciesDef): (open: number) => 
   }
   return (open) => {
     const k = THREE.MathUtils.clamp(open, 0, 1)
+    const opened = k > 0.12
+    smile.visible = !opened
+    mouth.visible = opened
     mouth.scale.set(1 + k * 0.2, 0.18 + k * 1.2, 0.5 + k * 0.3)
   }
 }
 
-/** Mắt: tròng trắng, mống mắt màu loài, con ngươi, điểm sáng. Mắt nhựa: hạt đen bóng, không mống. */
-function addEyes(head: THREE.Object3D, species: SpeciesDef, plastic: boolean): THREE.Group[] {
+/**
+ * Mắt: tròng trắng, mống mắt màu loài, con ngươi, điểm sáng, mí trên màu lông để chớp.
+ * Mắt nhựa: hạt đen bóng, không mống, không mí (không chớp).
+ */
+function addEyes(
+  head: THREE.Object3D,
+  species: SpeciesDef,
+  plastic: boolean,
+  fur: THREE.Material,
+): { eyes: THREE.Group[]; lids: THREE.Group[] } {
   const eyes: THREE.Group[] = []
+  const lids: THREE.Group[] = []
   for (const sx of [-1, 1]) {
     const eye = new THREE.Group()
     eye.position.set(sx * 0.14, 0.07, 0.3)
@@ -154,11 +221,24 @@ function addEyes(head: THREE.Object3D, species: SpeciesDef, plastic: boolean): T
       eye.add(sphere(0.042, mat(species.eyeColor, SMOOTH), 0, 0, 0.045, 1, 1, 0.9, 14))
       eye.add(sphere(0.026, mat(0x111111, SMOOTH), 0, 0, 0.075, 1, 1, 0.8, 12))
       eye.add(sphere(0.011, mat(0xffffff, { emissive: 0xffffff, emissiveIntensity: 0.5, flat: false }), 0.016, 0.02, 0.094, 1, 1, 1, 8))
+      const lidPivot = new THREE.Group()
+      const lid = new THREE.Mesh(new THREE.SphereGeometry(0.082, 16, 8, 0, Math.PI * 2, 0, Math.PI * 0.5), fur)
+      lid.scale.set(1.0, 1.1, 0.82)
+      lid.castShadow = false
+      lidPivot.add(lid)
+      lidPivot.rotation.x = -0.6
+      eye.add(lidPivot)
+      lids.push(lidPivot)
     }
     head.add(eye)
     eyes.push(eye)
   }
-  return eyes
+  return { eyes, lids }
+}
+
+function applyBlink(lids: THREE.Group[], k: number): void {
+  const rx = THREE.MathUtils.lerp(-0.6, 1.45, THREE.MathUtils.clamp(k, 0, 1))
+  for (const l of lids) l.rotation.x = rx
 }
 
 function addBrows(head: THREE.Object3D, furDark: THREE.Material): THREE.Group[] {
@@ -244,10 +324,19 @@ function addHeadAccessory(head: THREE.Object3D, look: CharacterLook): void {
   }
 }
 
-/** Phụ kiện trên thân, tọa độ không gian thân. */
-function addBodyAccessory(target: THREE.Object3D, look: CharacterLook): void {
+/** Phụ kiện trên thân, tọa độ không gian thân; torsoScale co giãn áo và dây theo bề ngang thân loài. */
+function addBodyAccessory(parent: THREE.Object3D, look: CharacterLook, torsoScale = 1): void {
   const accent = mat(look.accent, SMOOTH)
   const accentDark = mat(darken(look.accent, 0.7), SMOOTH)
+  // Áo gi-lê và dây đeo bám theo thân nên co giãn quanh tâm thân; nơ, khăn ở cổ giữ nguyên
+  const target = new THREE.Group()
+  target.position.set(0, 1.0, 0)
+  target.scale.set(torsoScale, 1, torsoScale)
+  parent.add(target)
+  const shift = (o: THREE.Object3D) => {
+    o.position.y -= 1.0
+    return o
+  }
   switch (look.accessory) {
     case 'bowtie': {
       const g = new THREE.Group()
@@ -258,34 +347,40 @@ function addBodyAccessory(target: THREE.Object3D, look: CharacterLook): void {
         g.add(wing)
       }
       g.add(sphere(0.028, accentDark, 0, 0, 0.01, 1, 1, 1, 10))
-      target.add(g)
+      parent.add(g)
       break
     }
     case 'scarf': {
       const ring = m(new THREE.TorusGeometry(0.17, 0.06, 10, 20), accent, 0, 1.46, 0)
       ring.rotation.x = Math.PI / 2
-      target.add(ring)
+      parent.add(ring)
       const tail = m(new THREE.BoxGeometry(0.1, 0.3, 0.04), accent, 0.12, 1.3, 0.26)
       tail.rotation.z = 0.1
-      target.add(tail)
-      target.add(m(new THREE.BoxGeometry(0.1, 0.05, 0.045), accentDark, 0.14, 1.14, 0.26))
+      parent.add(tail)
+      parent.add(m(new THREE.BoxGeometry(0.1, 0.05, 0.045), accentDark, 0.14, 1.14, 0.26))
       break
     }
-    case 'vest':
-      target.add(sphere(0.33, accentDark, 0, 1.02, -0.045, 1.04, 1.15, 0.9, 24))
-      target.add(sphere(0.02, mat(0xd4af37, SMOOTH), 0, 0.84, 0.3, 1, 1, 1, 8))
+    case 'sash': {
+      // Dải băng chéo từ vai xuống hông, ôm theo thân, có huy hiệu trước ngực
+      const band = m(new THREE.TorusGeometry(0.335, 0.03, 8, 36), accent, 0, 1.0, 0)
+      band.scale.set(1, 1.22, 0.9)
+      band.rotation.z = 0.95
+      target.add(shift(band))
+      const badge = sphere(0.035, mat(0xd4af37, SMOOTH), 0.11, 1.17, 0.29, 1, 1, 0.5, 10)
+      target.add(shift(badge))
       break
+    }
     case 'suspenders': {
       for (const sx of [-1, 1]) {
         const strap = m(new THREE.BoxGeometry(0.05, 0.6, 0.016), accent, sx * 0.13, 1.03, 0.285)
         strap.rotation.x = -0.12
         strap.rotation.z = sx * -0.08
-        target.add(strap)
+        target.add(shift(strap))
       }
       const belt = m(new THREE.TorusGeometry(0.245, 0.02, 8, 24), accentDark, 0, 0.72, 0)
       belt.rotation.x = Math.PI / 2
       belt.scale.z = 0.9
-      target.add(belt)
+      target.add(shift(belt))
       break
     }
     default:
@@ -512,7 +607,7 @@ function buildProcedural(
     }
   }
   const setMouth = addMouth(head, species)
-  const eyes = addEyes(head, species, clues.has('plasticEyes'))
+  const { eyes, lids } = addEyes(head, species, clues.has('plasticEyes'), fur)
   const brows = addBrows(head, furDark)
   if (species.cheeks === 'tufts') addCheekTufts(head, maskM ?? belly)
   else if (species.cheeks === 'blush') addBlush(head)
@@ -579,7 +674,8 @@ function buildProcedural(
     hands,
     brows,
     setMouth,
-    update: (dt, moving, talking) => {
+    setBlink: (k) => applyBlink(lids, k),
+    update: (dt, moving, talking, look) => {
       idleT += dt
       if (moving) {
         walkT += dt * 9
@@ -595,7 +691,8 @@ function buildProcedural(
         arms[1].rotation.x = THREE.MathUtils.damp(arms[1].rotation.x, -sway, 8, dt)
       }
       body.scale.set(s, s * (1 + Math.sin(idleT * 2.2) * 0.012), s)
-      head.rotation.x = Math.sin(idleT * 0.7) * 0.03 + (talking ? Math.sin(idleT * 11) * 0.04 : 0)
+      head.rotation.x = Math.sin(idleT * 0.7) * 0.03 + (talking ? Math.sin(idleT * 11) * 0.04 : 0) + (look?.pitch ?? 0)
+      head.rotation.y = look?.yaw ?? 0
       setMouth(talking ? Math.abs(Math.sin(idleT * 22)) * 0.8 : 0)
     },
     baseScale: species.height,
@@ -628,17 +725,19 @@ function buildFromModel(
   root.add(body)
   body.add(inst.root)
 
-  // Đổi vật liệu glTF sang toon; lông theo màu của khách (manh mối màu lông sai)
+  // Đổi vật liệu glTF sang toon; lông theo màu của khách (manh mối màu lông sai).
+  // Thân có mặt nạ vertex color -> vật liệu trộn vùng bụng / mặt / mõm mượt.
   inst.root.traverse((o) => {
     const mesh = o as THREE.Mesh
     if (!mesh.isMesh) return
     const src = mesh.material as THREE.Material
-    mesh.material = toonFromGltf(src.name, src, furColor)
+    mesh.material = mesh.geometry.attributes.color ? bodyMaterial(furColor, species) : toonFromGltf(src.name, src, furColor)
     mesh.castShadow = true
     mesh.receiveShadow = false
   })
 
   const bone = (name: string): THREE.Object3D | null => inst.root.getObjectByName(name) ?? null
+  const fur = mat(furColor, SMOOTH)
   const furDark = mat(darken(furColor, 0.7), SMOOTH)
   const extras: THREE.Object3D[] = []
   root.updateMatrixWorld(true)
@@ -657,7 +756,7 @@ function buildFromModel(
 
   const head = anchor('Head', 0, HEAD_Y, 0)
   const setMouth = addMouth(head, species)
-  const eyes = addEyes(head, species, clues.has('plasticEyes'))
+  const { eyes, lids } = addEyes(head, species, clues.has('plasticEyes'), fur)
   const brows = addBrows(head, furDark)
   if (species.cheeks === 'blush') addBlush(head)
   addHeadAccessory(head, look)
@@ -665,9 +764,10 @@ function buildFromModel(
   if (quirk === 'greyPatch') addGreyPatch(head)
 
   const chest = anchor('Chest', 0, 0, 0)
-  addBodyAccessory(chest, look)
+  addBodyAccessory(chest, look, species.torsoScale)
   if (clues.has('zipper')) addZipper(anchor('Spine', 0, 0, 0))
-  if (quirk === 'bandage') addBandage(anchor('UpperArm.R', -MODEL_ARM_X, 1.13, 0))
+  const armX = modelArmX(species)
+  if (quirk === 'bandage') addBandage(anchor('UpperArm.R', -armX.upper, 1.13, 0))
 
   const hands: THREE.Object3D[] = []
   for (const sx of [-1, 1]) {
@@ -675,7 +775,7 @@ function buildFromModel(
     const paw = bone('Paw.' + side)
     if (clues.has('fiveFingers')) {
       if (paw) paw.visible = false
-      const a = anchor('Hand.' + side, sx * MODEL_ARM_X, 0.66, 0.125, sx)
+      const a = anchor('Hand.' + side, sx * armX.wrist, 0.66, 0.125, sx)
       a.add(buildHumanHand())
       hands.push(a)
     } else if (paw) {
@@ -710,6 +810,7 @@ function buildFromModel(
   walk?.setEffectiveWeight(0)
   talk?.setEffectiveWeight(0)
   if (idle) idle.time = rand(0, 3)
+  const headBone = bone('Head')
   let walkW = 0
   let talkW = 0
   let t = 0
@@ -717,13 +818,14 @@ function buildFromModel(
   return {
     root,
     body,
-    head: bone('Head') ?? head,
+    head: headBone ?? head,
     eyes,
     ears,
     hands,
     brows,
     setMouth,
-    update: (dt, moving, talking) => {
+    setBlink: (k) => applyBlink(lids, k),
+    update: (dt, moving, talking, look) => {
       walkW = THREE.MathUtils.damp(walkW, moving ? 1 : 0, 10, dt)
       talkW = THREE.MathUtils.damp(talkW, talking ? 1 : 0, 12, dt)
       idle?.setEffectiveWeight(1 - walkW * 0.85)
@@ -732,6 +834,11 @@ function buildFromModel(
       t += dt
       setMouth(talking ? Math.abs(Math.sin(t * 22)) * 0.8 : 0)
       mixer.update(dt)
+      // Sau khi clip đặt tư thế, cộng thêm hướng nhìn về người chơi lên xương đầu
+      if (headBone && look) {
+        headBone.rotation.y += look.yaw
+        headBone.rotation.x += look.pitch
+      }
     },
     baseScale: species.height,
     furColor,

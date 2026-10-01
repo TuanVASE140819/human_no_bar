@@ -229,7 +229,9 @@ Bản đầu giữ đêm ngắn (90 giây) và dễ đọc. Nếu người chơi
 
 **Giai đoạn B (asset CC0):** thay khối bằng model glTF miễn phí bản quyền, ưu tiên gói động vật low-poly có sẵn animation của Quaternius và gói nhân vật của Kenney. Manh mối gắn vào xương (khóa kéo vào xương sống, tai vào xương đầu). Giữ nguyên toàn bộ logic từ giai đoạn A.
 
-> **Cập nhật 01/10/2026:** các gói động vật CC0 kể trên đều là thú bốn chân, không hợp với khách đứng hai chân trong costume và không gắn được manh mối. Thay vào đó đã nâng giai đoạn A lên "procedural chi tiết": tay chân có khớp vung khi đi, mõm riêng từng loài, mắt có mống màu và điểm sáng, lông mày, má, răng cửa, phụ kiện ngẫu nhiên (nơ, khăn, gi-lê, dây đeo, mũ quả dưa, mũ nồi). Xem bằng `?lineup`. Giai đoạn B chỉ còn cần nếu tìm được gói nhân vật thú hai chân.
+> **Cập nhật 01/10/2026:** các gói động vật CC0 kể trên đều là thú bốn chân, không hợp với khách đứng hai chân trong costume và không gắn được manh mối. Thay vào đó đã nâng giai đoạn A lên "procedural chi tiết": tay chân có khớp vung khi đi, mõm riêng từng loài, mắt có mống màu và điểm sáng, lông mày, má, răng cửa, phụ kiện ngẫu nhiên (nơ, khăn, dải băng chéo, dây đeo, mũ quả dưa, mũ nồi). Xem bằng `?lineup`.
+>
+> **Giai đoạn B thực tế (cùng ngày):** thân nhân vật được dựng bằng Blender qua script `tools/blender/build_characters.py` (ghép khối → Remesh voxel → Smooth → Decimate thành một lưới liền, armature 20 xương với trọng số tự động, clip Idle / Walk / Talk, mặt nạ vùng màu bằng vertex color để game trộn bụng / mảng mặt / mõm mượt). Mắt có mí chớp, miệng cười, lông mày, phụ kiện và các manh mối vẫn do game gắn vào xương lúc chạy. Đầu khách quay theo người chơi. Model nằm ở `public/models/*.glb`, dựng lại bằng `npm run assets`.
 
 **Người bên trong costume:** một mesh người đơn giản, da xám xịt, mặc đồ rách. Chỉ xuất hiện 2 giây khi costume rơi sau khi bị bắn đúng, và trong đêm.
 
