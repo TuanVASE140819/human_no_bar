@@ -140,7 +140,8 @@ export class Player {
         p.z = THREE.MathUtils.clamp(p.z + dz, this.bounds.minZ, this.bounds.maxZ)
         this.moving = true
       }
-      zoomTarget = input.mouseDown[2] ? 1 : 0
+      // Chuột phải, hoặc giữ Shift cho trackpad Mac
+      zoomTarget = input.mouseDown[2] || input.isDown('ShiftLeft') || input.isDown('ShiftRight') ? 1 : 0
     }
 
     this.zoom = THREE.MathUtils.damp(this.zoom, zoomTarget, 14, dt)

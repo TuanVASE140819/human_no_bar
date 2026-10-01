@@ -1,6 +1,9 @@
 # No Humans Bar
 
-**Chơi ngay:** https://tuanvase140819.github.io/human_no_bar/ (Chrome hoặc Edge trên máy tính, cần chuột và bàn phím)
+**Chơi ngay:** https://tuanvase140819.github.io/human_no_bar/ (Chrome, Edge, Firefox hoặc Safari 15+ trên máy tính)
+
+Trên **macOS**: chuột phải = chạm hai ngón trên trackpad hoặc Ctrl + click; có thể giữ **Shift** để soi và bấm **Space** để bắn.
+Màn Retina tự hạ độ phân giải khi khung hình thấp (thêm `?hd` để giữ nguyên). Nút **Toàn màn hình** có ở menu chính và menu tạm dừng.
 
 Game quản lý quán bar + suy luận, góc nhìn thứ nhất, chạy trên trình duyệt. Bạn là gorilla chủ quán,
 khách là thú, nhưng một số là người mặc costume. Soi kỹ, hỏi khẽ, chỉ bóp cò khi chắc chắn.

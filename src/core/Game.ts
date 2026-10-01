@@ -87,9 +87,17 @@ export class Game {
   private readonly doorOut = new THREE.Vector3(-0.3, 0, -3.6)
   private readonly spawnOut = new THREE.Vector3(-0.3, 0, -5.4)
 
+  /** ?hd: giữ nguyên độ phân giải Retina, không tự hạ khi khung hình thấp */
+  private readonly hd: boolean
+  private fpsTimer = 0
+  private fpsFrames = 0
+
   constructor(canvas: HTMLCanvasElement) {
+    const params = new URLSearchParams(location.search)
+    this.hd = params.has('hd')
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' })
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
+    // Màn Retina (Mac) có dpr 2: bắt đầu ở 1.5 để hậu kỳ nhẹ hơn, tự hạ tiếp nếu khung hình thấp
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, this.hd ? 2 : 1.5))
     this.renderer.setSize(window.innerWidth, window.innerHeight)
     this.renderer.shadowMap.enabled = true
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap
@@ -106,7 +114,7 @@ export class Game {
     this.lighting.update(0)
     this.postfx = new PostFX(this.renderer, this.scene, this.player.camera)
     // ?nofx tắt viền toon và hậu kỳ cho máy yếu
-    this.postfx.enabled = !new URLSearchParams(location.search).has('nofx')
+    this.postfx.enabled = !params.has('nofx')
 
     this.economy.onChange = () => this.refreshHud()
     this.input.onLockChange = (locked) => this.onLockChange(locked)
@@ -320,8 +328,10 @@ export class Game {
 
   private frame(now: number): void {
     requestAnimationFrame((t) => this.frame(t))
-    const dt = Math.min(0.05, (now - this.lastTime) / 1000)
+    const rawDt = (now - this.lastTime) / 1000
+    const dt = Math.min(0.05, rawDt)
     this.lastTime = now
+    this.adaptResolution(rawDt)
 
     tweens.update(dt)
     const playing = (this.state === 'open' || this.state === 'closing') && !this.overlay.visible
@@ -644,7 +654,8 @@ export class Game {
     if (inp.wasPressed('Digit2')) this.setTool('gun')
     if (inp.wasPressed('KeyQ')) this.openRequest()
     if (inp.wasPressed('KeyE')) this.serve()
-    if (inp.mousePressed[0] && this.player.tool === 'gun') this.shoot()
+    // Chuột trái, hoặc Space cho trackpad Mac
+    if ((inp.mousePressed[0] || inp.wasPressed('Space')) && this.player.tool === 'gun') this.shoot()
     this.hud.setZoom(this.player.isZooming)
   }
 
@@ -704,5 +715,21 @@ export class Game {
     this.renderer.setSize(window.innerWidth, window.innerHeight)
     this.postfx.setSize(window.innerWidth, window.innerHeight)
     this.player.resize(window.innerWidth / window.innerHeight)
+  }
+
+  /** Đo khung hình mỗi 2 giây; dưới 40 fps thì hạ pixel ratio từng nấc 0.25 tới tối thiểu 1. */
+  private adaptResolution(rawDt: number): void {
+    if (this.hd || rawDt > 0.25) return
+    this.fpsTimer += rawDt
+    this.fpsFrames += 1
+    if (this.fpsTimer < 2) return
+    const fps = this.fpsFrames / this.fpsTimer
+    this.fpsTimer = 0
+    this.fpsFrames = 0
+    const pr = this.renderer.getPixelRatio()
+    if (fps < 40 && pr > 1) {
+      this.renderer.setPixelRatio(Math.max(1, pr - 0.25))
+      this.onResize()
+    }
   }
 }

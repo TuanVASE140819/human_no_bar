@@ -130,7 +130,13 @@ export class PostFX {
     const w = Math.max(1, Math.floor(size.x * pr))
     const h = Math.max(1, Math.floor(size.y * pr))
 
-    const colorRT = new THREE.WebGLRenderTarget(w, h, { type: THREE.HalfFloatType, samples: 4 })
+    // Safari cũ không render được vào bộ đệm half-float: lùi về 8 bit để không bị màn hình đen
+    const halfFloatOk =
+      renderer.extensions.has('EXT_color_buffer_float') || renderer.extensions.has('EXT_color_buffer_half_float')
+    const colorRT = new THREE.WebGLRenderTarget(w, h, {
+      type: halfFloatOk ? THREE.HalfFloatType : THREE.UnsignedByteType,
+      samples: 4,
+    })
     this.composer = new EffectComposer(renderer, colorRT)
     this.composer.setPixelRatio(pr)
     this.composer.setSize(size.x, size.y)

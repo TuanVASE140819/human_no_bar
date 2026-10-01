@@ -25,7 +25,20 @@ export class Overlay {
     btn?.addEventListener('click', cb)
   }
 
+  private bindFullscreen(id: string): void {
+    this.bind(id, () => {
+      const doc = document as Document & { webkitExitFullscreen?: () => void }
+      const el = document.documentElement as HTMLElement & { webkitRequestFullscreen?: () => void }
+      if (document.fullscreenElement) void (document.exitFullscreen?.() ?? doc.webkitExitFullscreen?.())
+      else void (el.requestFullscreen?.() ?? el.webkitRequestFullscreen?.())
+    })
+  }
+
   showMenu(onStart: () => void): void {
+    const isMac = /Mac/i.test(navigator.platform) || /Macintosh/.test(navigator.userAgent)
+    const macNote = isMac
+      ? 'Mac: chuột phải = chạm hai ngón trên trackpad hoặc Ctrl + click; Esc để thả chuột. '
+      : ''
     this.open(
       `
       <p class="kicker">Một quán bar. Không phục vụ người.</p>
@@ -34,19 +47,23 @@ export class Overlay {
       <div class="controls">
         <div><span class="key">Chuột</span> nhìn</div>
         <div><span class="key">W A S D</span> đi lại sau quầy</div>
-        <div><span class="key">Chuột phải</span> giữ để soi</div>
+        <div><span class="key">Chuột phải</span> / <span class="key">Shift</span> giữ để soi</div>
         <div><span class="key">Q</span> yêu cầu khách</div>
         <div><span class="key">E</span> phục vụ</div>
         <div><span class="key">1 / 2</span> tay không / súng</div>
-        <div><span class="key">Chuột trái</span> bắn (khi cầm súng)</div>
+        <div><span class="key">Chuột trái</span> / <span class="key">Space</span> bắn</div>
         <div><span class="key">Tab</span> sổ tay</div>
       </div>
-      <button id="btn-start" class="primary">Bắt đầu ca làm</button>
-      <p class="fine">Bản M1, đồ họa toon. Máy yếu: thêm <b>?nofx</b> vào địa chỉ để tắt hậu kỳ.</p>
+      <div class="row">
+        <button id="btn-start" class="primary">Bắt đầu ca làm</button>
+        <button id="btn-full" class="ghost">Toàn màn hình</button>
+      </div>
+      <p class="fine">${macNote}Bản M1, đồ họa toon. Máy yếu: thêm <b>?nofx</b> vào địa chỉ để tắt hậu kỳ.</p>
     `,
       'menu',
     )
     this.bind('btn-start', onStart)
+    this.bindFullscreen('btn-full')
   }
 
   showMorning(cfg: DayConfig, expectedCustomers: number, ammo: number, onOpen: () => void): void {
@@ -132,10 +149,14 @@ export class Overlay {
       `
       <h2>Tạm dừng</h2>
       <p class="lead">Nhấn nút để cầm lại chuột.</p>
-      <button id="btn-resume" class="primary">Tiếp tục</button>
+      <div class="row">
+        <button id="btn-resume" class="primary">Tiếp tục</button>
+        <button id="btn-full" class="ghost">Toàn màn hình</button>
+      </div>
     `,
       'pause',
     )
     this.bind('btn-resume', onResume)
+    this.bindFullscreen('btn-full')
   }
 }

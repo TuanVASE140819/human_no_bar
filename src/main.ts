@@ -27,7 +27,14 @@ if (overlay && panel) {
   overlay.classList.remove('hidden')
 }
 
-if (params.has('nomodels')) {
+// Safari cũ hoặc máy không có WebGL2: báo rõ thay vì màn hình đen
+const probe = document.createElement('canvas').getContext('webgl2')
+if (!probe) {
+  if (panel) {
+    panel.innerHTML =
+      '<h2>Trình duyệt chưa hỗ trợ WebGL2</h2><p class="lead">Hãy mở bằng Chrome, Edge, Firefox hoặc Safari 15 trở lên trên máy tính.</p>'
+  }
+} else if (params.has('nomodels')) {
   start()
 } else {
   loadCharacterModels()
