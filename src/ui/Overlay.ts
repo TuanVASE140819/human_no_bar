@@ -127,12 +127,19 @@ export class Overlay {
     this.bind('btn-restart', onRestart)
   }
 
-  showWin(score: number, money: number, reputation: number, caught: number, onRestart: () => void): void {
+  showWin(
+    score: number,
+    money: number,
+    reputation: number,
+    caught: number,
+    ending: { kicker: string; title: string; lead: string },
+    onRestart: () => void,
+  ): void {
     this.open(
       `
-      <p class="kicker">Tuần đầu tiên</p>
-      <h1>Bạn sống sót</h1>
-      <p class="lead">Quán vẫn mở cửa sau 7 ngày. Không người nào được phục vụ mà không trả giá.</p>
+      <p class="kicker">${esc(ending.kicker)}</p>
+      <h1>${esc(ending.title)}</h1>
+      <p class="lead">${esc(ending.lead)}</p>
       <table class="summary">
         <tr><td>Tiền</td><td>$${Math.round(money)}</td></tr>
         <tr><td>Uy tín</td><td>${reputation}</td></tr>

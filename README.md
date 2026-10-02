@@ -27,9 +27,11 @@ Tham số địa chỉ hữu ích: `?debug` vào ca ngay (thêm `&intro` để g
 
 ## Cốt truyện
 
-Mỗi sáng, **Đặc vụ Lửng** của Cục Kiểm Soát Nhân Loại bước vào quầy trước khi khách tới. Ngày 1 ông ta kể bối cảnh và
-luật chơi; các ngày sau báo cáo hậu quả hôm trước (người lọt, bắn nhầm, khách bỏ về) và hé lộ tình tiết mới của ngày.
-Lời thoại nằm trong `src/data/story.ts`, đồng hồ trong quán dừng khi đặc vụ nói, bấm **E** để tiếp.
+Mỗi sáng, **Đặc vụ Lửng** của Cục Kiểm Soát Nhân Loại bước vào quầy trước khi khách tới: ngày 1 kể bối cảnh và luật,
+các ngày sau báo cáo hậu quả hôm trước và phản ứng theo lựa chọn của bạn. Xuyên suốt là bí ẩn về **Thợ May**, kẻ may
+costume cho người. Ngày 3 một con thỏ run rẩy thì thầm sự thật và bắt bạn chọn hứa báo hay giữ kín; ngày 5 thị trưởng
+Gấu ghé thăm (đừng bắn ông ấy); ngày 7 Thợ May xuất hiện cùng một đề nghị, đặc vụ xông vào đứng xem, và quyết định của
+bạn dẫn tới một trong hai kết thúc. Lời thoại nằm trong `src/data/story.ts`, bấm **E** để tiếp, **1** / **2** để trả lời.
 
 ## Dựng lại model nhân vật bằng Blender
 

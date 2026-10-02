@@ -9,9 +9,11 @@ export interface RequestItem {
 export class RequestMenu {
   private readonly root = $('request')
   private readonly list = $('request-list')
+  private readonly title = this.root.querySelector<HTMLElement>('.title')
   visible = false
 
-  open(items: RequestItem[]): void {
+  open(items: RequestItem[], title = 'Yêu cầu khách'): void {
+    if (this.title) this.title.textContent = title
     this.list.innerHTML = items
       .map(
         (it) =>

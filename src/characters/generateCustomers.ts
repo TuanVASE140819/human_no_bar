@@ -16,6 +16,10 @@ export interface CustomerSpec {
   greeting: string
   sloganText: string
   answerText: string
+  /** Tên hiển thị riêng (nhân vật cốt truyện), mặc định là tên loài */
+  displayName?: string
+  /** Vai trong cốt truyện; khách thường không có */
+  story?: 'informant' | 'mayor' | 'tailor'
 }
 
 /** Phụ kiện ngẫu nhiên cho cá tính; hươu có gạc nên không đội mũ. */

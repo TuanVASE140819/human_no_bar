@@ -2,8 +2,8 @@ import type { DrinkId } from './drinks'
 
 /** Loài khách ngẫu nhiên */
 export type CustomerSpeciesId = 'bear' | 'fox' | 'rabbit' | 'boar' | 'wolf' | 'deer'
-/** Mọi loài có model, kể cả nhân vật cốt truyện (lửng = đặc vụ) */
-export type SpeciesId = CustomerSpeciesId | 'badger'
+/** Mọi loài có model, kể cả nhân vật cốt truyện (lửng = đặc vụ, chồn = Thợ May) */
+export type SpeciesId = CustomerSpeciesId | 'badger' | 'stoat'
 export type EarShape = 'round' | 'pointed' | 'long' | 'small' | 'wide'
 export type TailShape = 'stub' | 'bushy' | 'puff' | 'short' | 'long' | 'flag'
 export type SnoutShape = 'long' | 'medium' | 'short' | 'flat'

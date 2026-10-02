@@ -53,6 +53,11 @@ SPECIES = {
                    ear='round', earInner=0xCFCFCF, tail='bushy', tailTip=0xBFBFBF,
                    snout='medium', mask=0xECECEC, band=0x1C1C1C,
                    torso=(0.32, 0.41, 0.3), hips=(0.3, 0.17, 0.26), limb=1.05, feet='paw'),
+    # Thợ May: chồn thon, nâu, bụng kem, đuôi dài chóp đen
+    'stoat': dict(fur=0x8B6A46, belly=0xF1E9D8, snoutColor=0xF1E9D8, nose=0x1A1A1A,
+                  ear='round', earInner=0xF1E9D8, tail='long', tailTip=0x1A1A1A,
+                  snout='long', mask=0xF1E9D8,
+                  torso=(0.26, 0.4, 0.25), hips=(0.25, 0.15, 0.23), limb=0.85, feet='paw'),
 }
 
 HEAD = Vector((0.0, 1.84, 0.0))
@@ -519,7 +524,7 @@ def build_tail(spec, arm, fur, belly):
         cyl(bm, base, end, 0.055, 0.05, seg=14)
         ell(bm, base, 0.055)
         ell(bm, end, 0.06)
-        regions.append((belly, lambda p, e=end: (p - e).length < 0.07))
+        regions.append((tipM, lambda p, e=end: (p - e).length < 0.07))
     else:  # flag
         ell(bm, base, (0.075, 0.09, 0.0375))
         regions.append((tipM, lambda p: True))

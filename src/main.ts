@@ -13,8 +13,8 @@ function start(): void {
   if (params.has('lineup')) {
     game.debugLineup()
   } else if (params.has('debug')) {
-    // ?debug bỏ qua menu; thêm &intro để vẫn có cảnh đặc vụ mở đầu
-    game.debugStart(params.has('intro'))
+    // ?debug bỏ qua menu; &intro giữ cảnh đặc vụ mở đầu; &day=N bắt đầu ở ngày N; &storyfirst cho khách cốt truyện vào trước
+    game.debugStart(params.has('intro'), Number(params.get('day') ?? 1) || 1, params.has('storyfirst'))
   }
 }
 

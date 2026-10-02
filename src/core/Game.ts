@@ -21,7 +21,23 @@ import {
   REP_WALKOUT,
   type DayStats,
 } from '@/systems/Economy'
-import { AGENT_NAME, agentSpec, introLines, dailyLines } from '@/data/story'
+import {
+  AGENT_NAME,
+  STORY_DAYS,
+  agentSpec,
+  storySpec,
+  introLines,
+  dailyLines,
+  storyLines,
+  storyChoice,
+  agentFinaleLines,
+  agentAfterFinale,
+  endingText,
+  mayorShotReason,
+  newStoryFlags,
+  type StoryFlags,
+  type StoryChoice,
+} from '@/data/story'
 import { sfx } from './Audio'
 import type { Mood } from '@/characters/buildCharacter'
 import { DayClock } from '@/systems/DayClock'
@@ -83,11 +99,17 @@ export class Game {
   /** Màn trưng bày nhân vật: không sinh khách, không đóng cửa */
   private lineup = false
 
-  /** Cảnh cốt truyện: đặc vụ ghé quán mỗi sáng, đồng hồ dừng, chưa sinh khách */
+  /** Cảnh cốt truyện: đồng hồ dừng, không sinh khách, không bắn; ai đang nói là `speaker` */
   private agent: Customer | null = null
   private cutscene = false
   private lines: string[] = []
   private lineIndex = 0
+  private speaker: Customer | null = null
+  private speakerName = ''
+  private onLinesDone: (() => void) | null = null
+  private choice: StoryChoice | null = null
+  private storyFlags: StoryFlags = newStoryFlags()
+  private storyFirst = false
   private yesterday: DayStats | null = null
 
   private readonly doorIn = new THREE.Vector3(0.3, 0, -3.6)
@@ -132,11 +154,19 @@ export class Game {
     requestAnimationFrame((t) => this.frame(t))
   }
 
-  /** Dùng khi chạy kiểm thử headless: bỏ qua menu, mở quán ngay. intro = vẫn chạy cảnh đặc vụ. */
-  debugStart(intro = false): void {
+  /**
+   * Dùng khi chạy kiểm thử headless: bỏ qua menu, mở quán ngay.
+   * intro = vẫn chạy cảnh đặc vụ; day = bắt đầu ở ngày đó; storyFirst = khách cốt truyện vào đầu tiên.
+   */
+  debugStart(intro = false, day = 1, storyFirst = false): void {
     this.debug = true
     this.forceIntro = intro
+    this.storyFirst = storyFirst
     this.newGame()
+    if (day > 1) {
+      this.day = Math.min(day, TOTAL_DAYS)
+      this.startDay()
+    }
     this.openBar()
   }
 
@@ -178,6 +208,8 @@ export class Game {
     this.economy.reputation = 50
     this.economy.ammo = 6
     this.totalCaught = 0
+    this.storyFlags = newStoryFlags()
+    this.yesterday = null
     this.day = 1
     this.setTool('hands')
     this.startDay()
@@ -191,6 +223,12 @@ export class Game {
     this.bar.setClock(this.clock.minutes)
     const count = Math.round(cfg.customers * this.economy.customerMod)
     this.queue = generateDayCustomers(cfg, count)
+    // Khách cốt truyện chen vào hàng chờ của ngày
+    const ev = STORY_DAYS[this.day]
+    if (ev && !this.lineup) {
+      const at = this.storyFirst ? 0 : Math.min(ev.afterCustomers, this.queue.length)
+      this.queue.splice(at, 0, storySpec(ev.role))
+    }
     this.state = 'morning'
     this.hud.setVisible(false)
     this.dialog.hide()
@@ -219,35 +257,53 @@ export class Game {
 
   // ---------- Cốt truyện: đặc vụ ghé quán ----------
 
+  /** Đặc vụ ghé buổi sáng: vào tới quầy, nói, rồi đi. */
   private startVisit(): void {
+    const lines = this.day === 1 ? introLines() : dailyLines(this.day, this.yesterday, this.storyFlags)
+    const a = this.spawnAgent(this.bar.counterSpot, () => this.startLines(a, AGENT_NAME, lines, () => this.endVisit()))
+    this.hud.setHint('Đặc vụ đang vào...')
+  }
+
+  /** Đặc vụ bước vào và đi tới điểm `to`; cảnh cốt truyện bật ngay từ lúc mở cửa. */
+  private spawnAgent(to: THREE.Vector3, onArrive: () => void): Customer {
     this.cutscene = true
-    this.lines = this.day === 1 ? introLines() : dailyLines(this.day, this.yesterday)
-    this.lineIndex = 0
     const a = new Customer(agentSpec(), this.scene, this.spawnIn)
     a.lookTarget = this.player.camera.position
+    a.patience = Infinity
     this.agent = a
     this.useDoor(true)
     a.walkTo(this.doorIn, () => {
       this.useDoor(false)
-      a.walkTo(this.bar.counterSpot, () => {
+      a.walkTo(to, () => {
         if (this.agent !== a) return
         a.state = 'waiting'
         a.face(0)
-        this.showLine(0)
+        onArrive()
       })
     })
-    this.hud.setHint('Đặc vụ đang vào...')
+    return a
+  }
+
+  /** Một nhân vật nói một chuỗi câu (chữ chạy, E để tiếp); xong gọi onDone. */
+  private startLines(speaker: Customer, name: string, lines: string[], onDone: () => void): void {
+    this.cutscene = true
+    this.speaker = speaker
+    this.speakerName = name
+    this.lines = lines
+    this.lineIndex = 0
+    this.onLinesDone = onDone
+    this.showLine(0)
   }
 
   private showLine(i: number): void {
-    const a = this.agent
-    if (!a) return
+    const s = this.speaker
+    if (!s) return
     this.lineIndex = i
     const line = this.lines[i]
-    this.dialog.say(AGENT_NAME, line, true)
+    this.dialog.say(this.speakerName, line, true)
     this.dialog.setPrompt(true)
     this.dialog.setPatience(null)
-    a.talk(Math.min(4, 0.6 + line.length / 42))
+    s.talk(Math.min(4, 0.6 + line.length / 42))
     this.hud.setHint('<b>E</b> hoặc <b>chuột trái</b> để tiếp · <b>Tab</b> sổ tay')
   }
 
@@ -256,31 +312,152 @@ export class Game {
       this.dialog.finish()
       return
     }
-    if (this.lineIndex + 1 < this.lines.length) this.showLine(this.lineIndex + 1)
-    else this.endVisit()
+    if (this.lineIndex + 1 < this.lines.length) {
+      this.showLine(this.lineIndex + 1)
+      return
+    }
+    this.dialog.setPrompt(false)
+    const done = this.onLinesDone
+    this.onLinesDone = null
+    done?.()
   }
 
+  /** Đặc vụ rời quán, ca làm bắt đầu. */
   private endVisit(): void {
-    const a = this.agent
     this.cutscene = false
-    this.dialog.setPrompt(false)
+    this.speaker = null
     tweens.delay(1.2, () => {
       if (!this.current) this.dialog.hide()
     })
-    if (a) {
-      a.state = 'leaving'
-      a.walkTo(this.doorOut, () => {
-        this.useDoor(true)
-        a.walkTo(this.spawnOut, () => {
-          this.useDoor(false)
-          a.remove()
-          if (this.agent === a) this.agent = null
-        })
-      })
-    }
+    this.dismissAgent()
     this.spawnTimer = 2.0
     if (this.day === 1) toast('Nhiệm vụ: trụ 7 ngày. Không để người lọt.', 'info', 4)
     this.setHint()
+  }
+
+  private dismissAgent(): void {
+    const a = this.agent
+    if (!a) return
+    a.state = 'leaving'
+    a.walkTo(this.doorOut, () => {
+      this.useDoor(true)
+      a.walkTo(this.spawnOut, () => {
+        this.useDoor(false)
+        a.remove()
+        if (this.agent === a) this.agent = null
+      })
+    })
+  }
+
+  // ---------- Cốt truyện: khách đặc biệt giữa ngày ----------
+
+  /** Khách cốt truyện vừa tới quầy và nói xong phần của mình. */
+  private afterStoryLines(c: Customer): void {
+    const role = c.spec.story
+    if (role === 'informant') {
+      const ch = storyChoice(role)
+      if (ch) {
+        this.offerChoice(c, ch)
+        return
+      }
+    }
+    if (role === 'tailor') {
+      this.startFinale(c)
+      return
+    }
+    this.becomeRegular(c, role === 'mayor')
+  }
+
+  private offerChoice(c: Customer, ch: StoryChoice): void {
+    this.choice = ch
+    this.speaker = c
+    this.request.open(
+      ch.options.map((o, i) => ({ key: String(i + 1), label: o.label })),
+      'Trả lời',
+    )
+    this.hud.setHint('<b>1</b> hoặc <b>2</b> để trả lời')
+  }
+
+  private pickChoice(i: number): void {
+    const ch = this.choice
+    const c = this.speaker
+    if (!ch || !c) return
+    const opt = ch.options[i]
+    if (!opt) return
+    this.choice = null
+    this.request.close()
+    opt.apply(this.storyFlags)
+    this.economy.note(`Trả lời chỉ điểm: "${opt.label}"`)
+    this.startLines(c, this.claim(c), opt.reply, () => this.becomeRegular(c, false))
+  }
+
+  /** Khách cốt truyện trở thành khách bình thường đứng chờ ở quầy (vip = không bao giờ bỏ về). */
+  private becomeRegular(c: Customer, vip: boolean): void {
+    this.cutscene = false
+    this.speaker = null
+    c.patience = vip ? Infinity : PATIENCE_SECONDS
+    this.dialog.say(this.claim(c), `Cho tôi một ${DRINKS[c.spec.order].name}.`)
+    this.dialog.setPatience(vip ? null : 1)
+    c.talk(1)
+    this.setHint()
+  }
+
+  /** Ngày 7: Thợ May đã nói xong, đặc vụ xông vào, đứng cạnh quầy xem người chơi quyết định. */
+  private startFinale(tailor: Customer): void {
+    tailor.patience = Infinity
+    this.dialog.hide()
+    this.hud.setHint('Cửa mở...')
+    const side = new THREE.Vector3(2.7, 0, -0.3)
+    const a = this.spawnAgent(side, () => {
+      this.startLines(a, AGENT_NAME, agentFinaleLines(), () => {
+        this.cutscene = false
+        this.speaker = null
+        this.dialog.say(this.claim(tailor), 'Tôi đợi. Nước lã là được.')
+        this.dialog.setPatience(null)
+        tailor.talk(1)
+        this.hud.setHint(
+          '<b>E</b> phục vụ Thợ May: để ông ấy đi, nhận $500 · <b>2</b> rồi <b>chuột trái</b>: bắn, nhận $300 · <b>Tab</b> sổ tay',
+        )
+      })
+    })
+  }
+
+  /** Người chơi đã quyết định số phận Thợ May; đặc vụ nói lời cuối rồi đi, quán đóng cửa. */
+  private agentEpilogue(ending: 'tailor' | 'bureau'): void {
+    this.storyFlags.ending = ending
+    this.cutscene = true
+    this.queue = []
+    this.hud.setRemaining(0)
+    const a = this.agent
+    if (!a) {
+      this.finishFinale()
+      return
+    }
+    this.startLines(a, AGENT_NAME, agentAfterFinale(ending), () => this.finishFinale())
+  }
+
+  private finishFinale(): void {
+    this.cutscene = false
+    this.speaker = null
+    this.dismissAgent()
+    tweens.delay(0.6, () => {
+      if (this.state === 'open') this.beginClosing()
+    })
+  }
+
+  private resolveTailorServed(c: Customer): void {
+    this.cutscene = true
+    this.economy.earn(500)
+    toast('+$500 · Thợ May để lại trên quầy', 'good', 3)
+    sfx.clink()
+    tweens.delay(0.35, () => sfx.coin())
+    this.economy.note('Thợ May: để ông ấy đi. +$500.')
+    this.dialog.say(this.claim(c), 'Cảm ơn. Bọn trẻ sẽ thấy biển.')
+    this.dialog.setPatience(null)
+    c.setMood('neutral')
+    c.talk(1.2)
+    c.drink(DRINKS.water.color, () => this.leave(c))
+    tweens.delay(2.4, () => this.agentEpilogue('tailor'))
   }
 
   private beginClosing(): void {
@@ -338,7 +515,14 @@ export class Game {
   private win(): void {
     this.state = 'win'
     const score = Math.round(this.economy.money + this.economy.reputation * 5 + this.totalCaught * 30)
-    this.overlay.showWin(score, this.economy.money, this.economy.reputation, this.totalCaught, () => this.newGame())
+    this.overlay.showWin(
+      score,
+      this.economy.money,
+      this.economy.reputation,
+      this.totalCaught,
+      endingText(this.storyFlags.ending),
+      () => this.newGame(),
+    )
   }
 
   // ---------- Vòng lặp ----------
@@ -389,7 +573,7 @@ export class Game {
     }
 
     const c = this.current
-    if (c && (c.state === 'waiting' || c.state === 'turning')) {
+    if (c && !this.cutscene && Number.isFinite(c.patience) && (c.state === 'waiting' || c.state === 'turning')) {
       c.patience -= dt
       this.dialog.setPatience(c.patience / PATIENCE_SECONDS)
       if (c.patience <= 0) this.walkOut(c)
@@ -410,7 +594,7 @@ export class Game {
   // ---------- Khách ----------
 
   private claim(c: Customer): string {
-    return c.spec.species.name
+    return c.spec.displayName ?? c.spec.species.name
   }
 
   private useDoor(open: boolean): void {
@@ -440,6 +624,13 @@ export class Game {
         c.state = 'waiting'
         c.face(0)
         c.greet()
+        if (spec.story) {
+          // Khách cốt truyện: nói phần của mình trước, chưa tính kiên nhẫn
+          c.patience = Infinity
+          this.economy.note(`${this.claim(c)} bước vào quán.`)
+          this.startLines(c, this.claim(c), storyLines(spec.story), () => this.afterStoryLines(c))
+          return
+        }
         c.talk(1.6)
         this.dialog.say(this.claim(c), `${spec.greeting} Cho tôi một ${DRINKS[spec.order].name}.`)
         this.dialog.setPatience(1)
@@ -491,10 +682,21 @@ export class Game {
   private serve(): void {
     const c = this.current
     if (!c || c.state !== 'waiting') return
+    if (c.spec.story === 'tailor') {
+      this.resolveTailorServed(c)
+      return
+    }
     const drink = DRINKS[c.spec.order]
     const price = Math.round(drink.price * this.economy.priceMod)
     this.economy.earn(price)
     this.economy.stats.served += 1
+    if (c.spec.story === 'mayor') {
+      this.economy.bounty(200)
+      this.economy.addRep(10)
+      this.storyFlags.mayorServed = true
+      toast('Thị trưởng hài lòng: +$200, uy tín +10', 'good', 3.5)
+      this.economy.note('Phục vụ thị trưởng Gấu: +$200, uy tín +10.')
+    }
     if (c.spec.isHuman) {
       this.economy.stats.slipped += 1
       this.economy.note(`${this.claim(c)} gọi ${drink.name}: đã phục vụ.`)
@@ -607,12 +809,23 @@ export class Game {
   private resolveShot(c: Customer): void {
     const who = this.claim(c)
     const wasLeaving = c.state === 'leaving'
+    const role = c.spec.story
     if (this.current === c) {
       this.current = null
       this.dialog.setPatience(null)
       this.others.push(c)
     }
     this.spawnTimer = 5
+
+    if (role === 'informant') this.storyFlags.informantShot = true
+    if (role === 'mayor') tweens.delay(1.8, () => this.gameOver(mayorShotReason()))
+    if (role === 'tailor') {
+      // Nộp Thợ May: thưởng đặc biệt, đặc vụ nói lời cuối sau khi ông ấy ngã
+      this.economy.bounty(300 - BOUNTY)
+      toast('Thưởng đặc biệt: +$300 và một tấm huy chương', 'good', 4)
+      this.economy.note('Thợ May: đã bắn. +$300, huy chương Thanh Lọc.')
+      tweens.delay(2.6, () => this.agentEpilogue('bureau'))
+    }
 
     if (c.spec.isHuman) {
       this.economy.bounty(BOUNTY)
@@ -679,9 +892,16 @@ export class Game {
     }
 
     if (this.cutscene) {
-      // Trong cảnh đặc vụ: E / chuột trái / Space để tiếp lời, không bắn, không gọi menu yêu cầu
+      // Đang có lựa chọn: 1 / 2 trả lời
+      if (this.choice) {
+        if (inp.wasPressed('Digit1')) this.pickChoice(0)
+        else if (inp.wasPressed('Digit2')) this.pickChoice(1)
+        this.hud.setZoom(this.player.isZooming)
+        return
+      }
+      // Trong cảnh cốt truyện: E / chuột trái / Space để tiếp lời, không bắn, không gọi menu yêu cầu
       if (inp.wasPressed('KeyE') || inp.wasPressed('Space') || inp.mousePressed[0]) {
-        if (this.agent?.state === 'waiting') this.advanceLine()
+        if (this.speaker?.state === 'waiting') this.advanceLine()
       }
       if (inp.wasPressed('Digit1')) this.setTool('hands')
       if (inp.wasPressed('Digit2')) this.setTool('gun')
@@ -760,6 +980,10 @@ export class Game {
     this.agent?.remove()
     this.agent = null
     this.cutscene = false
+    this.speaker = null
+    this.choice = null
+    this.onLinesDone = null
+    this.request.close()
     this.dialog.setPrompt(false)
     this.queue = []
     this.doorUsers = 0

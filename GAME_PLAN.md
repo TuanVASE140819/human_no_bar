@@ -174,16 +174,21 @@ Bản đầu giữ đêm ngắn (90 giây) và dễ đọc. Nếu người chơi
 | 6    | Lễ hội "Ngày chiến thắng"  | Khách gấp rưỡi, người giả gấp đôi                    |
 | 7    | Đêm cuối                   | 3 đợt lớn, có kẻ dùng xà beng phá nhanh gấp đôi      |
 
-### 2.6b Dẫn chuyện: Đặc vụ Lửng (đã làm 02/10/2026)
+### 2.6b Cốt truyện: Đặc vụ Lửng và Thợ May (đã làm 02/10/2026)
 
-Nhân vật cốt truyện là lửng mặt trắng sọc đen, áo khoác dài, mũ phớt, kính đen, thuộc "Cục Kiểm Soát Nhân Loại". Mỗi sáng sau khi bấm Mở cửa, đặc vụ bước vào quầy trước khách (đồng hồ dừng, chưa sinh khách, không bắn được):
+Đặc vụ Lửng (lửng mặt trắng sọc đen, áo khoác dài, mũ phớt, kính đen, "Cục Kiểm Soát Nhân Loại") ghé quầy mỗi sáng trước khách; đồng hồ dừng, bấm E / chuột trái để tiếp lời. Bí ẩn xuyên suốt là **Thợ May**, kẻ may costume cho người. Ba khách cốt truyện chen vào hàng chờ giữa ngày:
 
-| Ngày | Nội dung thoại                                                                                                   |
-| ---- | ---------------------------------------------------------------------------------------------------------------- |
-| 1    | Bối cảnh (chiến tranh, người chui vào costume), quán là chốt kiểm soát, luật thưởng phạt, cách soi manh mối       |
-| 2–7  | Báo cáo hôm qua (khách phục vụ, người bắt, bắn nhầm, người lọt, khách bỏ về) + tình tiết riêng của ngày + tạm biệt |
+| Ngày | Sự kiện                                                                                                                                                                     |
+| ---- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1    | Đặc vụ kể bối cảnh, luật thưởng phạt, cách soi, nhắc tới Thợ May                                                                                                            |
+| 2    | Đặc vụ ra lệnh: khách nào nhắc Thợ May phải báo                                                                                                                             |
+| 3    | **Thỏ run rẩy** (thú thật) thì thầm: Thợ May may cho người muốn trốn, có trẻ con; Lửng chỉ cần chỉ tiêu. Người chơi chọn **hứa báo** hoặc **giữ kín**, rồi thỏ gọi món bình thường |
+| 4    | Đặc vụ phản ứng theo lựa chọn ngày 3 (khen, nghi ngờ nói dối, hoặc trách nếu đã bắn chỉ điểm)                                                                              |
+| 5    | **Thị trưởng Gấu** (thú thật, ba đời) tiết lộ Cục thiếu chỉ tiêu "30 cái đầu". Phục vụ: +$200, +10 uy tín. Bắn: thua ngay                                                   |
+| 6    | Đặc vụ ép "nghi là bắn", hứa ký giấy; nhắc nếu thị trưởng đã khen người chơi                                                                                                |
+| 7    | **Thợ May** (chồn đeo kính, người thật, costume không một sơ hở) đề nghị để 12 người trốn qua kho, để lại $500. Đặc vụ xông vào, đứng cạnh quầy: bắn (+$300, huy chương) hoặc phục vụ |
 
-Dữ liệu ở `src/data/story.ts`; hộp thoại chữ chạy, bấm E / chuột trái để tiếp. Có thể mở rộng: đặc vụ phản ứng theo sự kiện đặc biệt (thanh tra, thị trưởng, lễ hội) và kết thúc riêng khi thắng hoặc thua.
+Hai kết thúc hiển thị ở màn kết quả: **Quán vẫn là quán** (để Thợ May đi) và **Trạm Kiểm Soát số 7** (nộp Thợ May); kết thúc trung tính nếu Thợ May không kịp tới. Toàn bộ lời thoại và cờ cốt truyện nằm trong `src/data/story.ts`; luồng ở `Game.ts` (startLines / offerChoice / startFinale / agentEpilogue). Kiểm thử nhanh: `?debug&day=3&storyfirst`, `?debug&day=5&storyfirst`, `?debug&day=7&storyfirst` (thêm `&shoot` cho nhánh bắn).
 
 ### 2.7 Điều khiển
 
@@ -319,6 +324,8 @@ Dựng modular: tường, sàn, đồ nội thất từ khối hoặc từ gói 
 - Đêm: drone trầm, tiếng gió, tim đập khi cửa sắp vỡ.
 - Mỗi loài một tiếng kêu ngắn, vừa tạo cá tính vừa là manh mối (người giả bắt chước lệch tông).
 - Nguồn: freesound và Kenney Audio, giấy phép CC0.
+
+> **Đã làm 02/10/2026 (không cần file):** `src/core/Audio.ts` tổng hợp mọi âm thanh bằng WebAudio: súng, chuông và kẹt cửa, bước chân theo khoảng cách, ly chạm, tiền, chữ chạy, tiếng ngã, và nhạc nền lo-fi jazz tự sinh (vòng hợp âm Dm9 G13 Cmaj9 Am9 ở 84 BPM, trống swing, giai điệu thưa, rè đĩa than). Phím M tắt / bật, lưu trong localStorage. Tiếng kêu từng loài và âm thanh đêm còn chờ M3 / M5.
 
 ---
 
