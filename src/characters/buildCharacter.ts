@@ -12,6 +12,51 @@ export interface HeadLook {
   pitch: number
 }
 
+export type Mood = 'neutral' | 'scared' | 'suspicious'
+
+/** Lông mày, mí mắt, độ mở mắt và miệng theo biểu cảm; dùng chung cho rig procedural và rig model. */
+class Face {
+  private lidOpen = -0.6
+  private blinkK = 0
+  /** Độ há miệng nền khi không nói (sợ thì hơi há) */
+  mouthBase = 0
+
+  constructor(
+    private readonly brows: THREE.Object3D[],
+    private readonly lids: THREE.Object3D[],
+    private readonly eyes: THREE.Object3D[],
+  ) {}
+
+  setMood(mood: Mood): void {
+    const cfg =
+      mood === 'scared'
+        ? { y: 0.25, tilt: 0.08, lid: -0.85, eye: 1.1, mouth: 0.3 }
+        : mood === 'suspicious'
+          ? { y: 0.17, tilt: 0.6, lid: 0.4, eye: 1.0, mouth: 0 }
+          : { y: 0.2, tilt: 0.2, lid: -0.6, eye: 1.0, mouth: 0 }
+    this.brows.forEach((b, i) => {
+      const sx = i === 0 ? -1 : 1
+      b.position.y = cfg.y
+      const bar = b.children[0]
+      if (bar) bar.rotation.z = sx * (-Math.PI / 2 + cfg.tilt)
+    })
+    for (const e of this.eyes) e.scale.setScalar(cfg.eye)
+    this.lidOpen = cfg.lid
+    this.mouthBase = cfg.mouth
+    this.applyBlink()
+  }
+
+  setBlink(k: number): void {
+    this.blinkK = THREE.MathUtils.clamp(k, 0, 1)
+    this.applyBlink()
+  }
+
+  private applyBlink(): void {
+    const rx = THREE.MathUtils.lerp(this.lidOpen, 1.45, this.blinkK)
+    for (const l of this.lids) l.rotation.x = rx
+  }
+}
+
 export type Accessory = 'bowtie' | 'scarf' | 'sash' | 'suspenders' | 'hat' | 'beret' | 'coat' | 'shades'
 /** Phụ kiện khách ngẫu nhiên (áo khoác và kính đen dành cho nhân vật cốt truyện) */
 export const ACCESSORIES: Accessory[] = ['bowtie', 'scarf', 'sash', 'suspenders', 'hat', 'beret']
@@ -45,6 +90,8 @@ export interface CharacterRig {
   setMouth(open: number): void
   /** 0 = mở mắt, 1 = nhắm (mí trên kéo xuống) */
   setBlink(k: number): void
+  /** Biểu cảm: bình thường, sợ (thấy súng), nghi ngờ (bị soi) */
+  setMood(mood: Mood): void
   /** Chơi một lần cử chỉ (vẫy chào, nâng ly uống); trả về thời lượng giây */
   playOnce(name: 'Wave' | 'Drink'): number
   /** Cầm ly có màu đồ uống ở tay phải / bỏ ly */
@@ -279,10 +326,6 @@ function addEyes(
   return { eyes, lids }
 }
 
-function applyBlink(lids: THREE.Group[], k: number): void {
-  const rx = THREE.MathUtils.lerp(-0.6, 1.45, THREE.MathUtils.clamp(k, 0, 1))
-  for (const l of lids) l.rotation.x = rx
-}
 
 function addBrows(head: THREE.Object3D, furDark: THREE.Material): THREE.Group[] {
   const brows: THREE.Group[] = []
@@ -757,6 +800,7 @@ function buildProcedural(
   let gestureLeft = 0
   let glass: THREE.Group | null = null
   const s = species.height
+  const face = new Face(brows, lids, eyes)
   return {
     root,
     body,
@@ -766,7 +810,8 @@ function buildProcedural(
     hands,
     brows,
     setMouth,
-    setBlink: (k) => applyBlink(lids, k),
+    setBlink: (k) => face.setBlink(k),
+    setMood: (mood) => face.setMood(mood),
     playOnce: (name) => {
       // Tay phải là arms[0] (phía -x). Vẫy: giơ ngang ra ngoài rồi lắc; uống: đưa tay lên miệng.
       const arm = arms[0]
@@ -830,7 +875,7 @@ function buildProcedural(
         head.rotation.x = Math.sin(idleT * 0.7) * 0.03 + (talking ? Math.sin(idleT * 11) * 0.04 : 0) + (look?.pitch ?? 0)
       }
       head.rotation.y = look?.yaw ?? 0
-      setMouth(talking ? Math.abs(Math.sin(idleT * 22)) * 0.8 : 0)
+      setMouth(talking ? Math.abs(Math.sin(idleT * 22)) * 0.8 : face.mouthBase)
     },
     baseScale: species.height,
     furColor,
@@ -960,6 +1005,7 @@ function buildFromModel(
   let walkW = 0
   let talkW = 0
   let t = 0
+  const face = new Face(brows, lids, eyes)
 
   return {
     root,
@@ -970,7 +1016,8 @@ function buildFromModel(
     hands,
     brows,
     setMouth,
-    setBlink: (k) => applyBlink(lids, k),
+    setBlink: (k) => face.setBlink(k),
+    setMood: (mood) => face.setMood(mood),
     playOnce: (name) => {
       const clip = THREE.AnimationClip.findByName(inst.clips, name)
       if (!clip) return 0.8
@@ -1009,7 +1056,7 @@ function buildFromModel(
       walk?.setEffectiveWeight(walkW)
       talk?.setEffectiveWeight(talkW * gesture)
       t += dt
-      setMouth(talking ? Math.abs(Math.sin(t * 22)) * 0.8 : 0)
+      setMouth(talking ? Math.abs(Math.sin(t * 22)) * 0.8 : face.mouthBase)
       mixer.update(dt)
       // Sau khi clip đặt tư thế, cộng thêm hướng nhìn về người chơi lên xương đầu
       if (headBone && look) {

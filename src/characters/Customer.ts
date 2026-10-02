@@ -1,8 +1,9 @@
 import * as THREE from 'three'
-import { buildCharacter, buildHumanReveal, type CharacterRig } from './buildCharacter'
+import { buildCharacter, buildHumanReveal, type CharacterRig, type Mood } from './buildCharacter'
 import type { CustomerSpec } from './generateCustomers'
 import { tweens, Easing } from '@/core/Tween'
 import { rand } from '@/core/rand'
+import { sfx } from '@/core/Audio'
 
 export type CustomerState = 'entering' | 'waiting' | 'turning' | 'drinking' | 'leaving' | 'down' | 'gone'
 
@@ -16,8 +17,12 @@ export class Customer {
 
   /** Điểm khách hướng mắt tới (vị trí camera người chơi), do Game gán */
   lookTarget: THREE.Vector3 | null = null
+  /** Đã nói câu phản ứng khi thấy súng chưa */
+  reactedToGun = false
+  mood: Mood = 'neutral'
 
   private target: THREE.Vector3 | null = null
+  private stepPhase = 0
   private onArrive: (() => void) | null = null
   private readonly speed = 1.7
   private walkT = 0
@@ -74,6 +79,12 @@ export class Customer {
     this.rig.playOnce('Wave')
   }
 
+  setMood(mood: Mood): void {
+    if (this.mood === mood) return
+    this.mood = mood
+    this.rig.setMood(mood)
+  }
+
   /** Nhận ly, nâng lên uống rồi gọi done (thường là rời quán). */
   drink(color: number, done: () => void): void {
     if (this.state !== 'waiting') return
@@ -127,6 +138,13 @@ export class Customer {
         root.position.y = Math.abs(Math.sin(this.walkT)) * 0.05
         this.rig.body.rotation.z = Math.sin(this.walkT) * 0.05
         moving = true
+        // Tiếng bước chân mỗi nửa chu kỳ, nhỏ dần theo khoảng cách tới người chơi
+        const phase = Math.floor(this.walkT / Math.PI)
+        if (phase !== this.stepPhase) {
+          this.stepPhase = phase
+          const d = this.lookTarget ? root.position.distanceTo(this.lookTarget) : 4
+          sfx.footstep(1 / (1 + d * 0.35))
+        }
       }
     } else {
       root.position.y *= 0.8
@@ -175,6 +193,7 @@ export class Customer {
     this.rig.setBlink(0)
     this.rig.setMouth(0.7)
     this.rig.releaseGlass()
+    tweens.delay(0.5, () => sfx.thud())
     this.talkLeft = 0
     if (reveal) {
       this.rig.body.visible = false

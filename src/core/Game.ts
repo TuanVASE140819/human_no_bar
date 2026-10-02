@@ -22,6 +22,8 @@ import {
   type DayStats,
 } from '@/systems/Economy'
 import { AGENT_NAME, agentSpec, introLines, dailyLines } from '@/data/story'
+import { sfx } from './Audio'
+import type { Mood } from '@/characters/buildCharacter'
 import { DayClock } from '@/systems/DayClock'
 import { dayConfig, TOTAL_DAYS } from '@/data/difficulty'
 import { DRINKS } from '@/data/drinks'
@@ -36,6 +38,12 @@ import { toast, screenFlash } from '@/ui/Toast'
 type GameState = 'menu' | 'morning' | 'open' | 'closing' | 'summary' | 'gameover' | 'win'
 
 const THANKS = ['Cảm ơn ông chủ!', 'Tuyệt. Hẹn gặp lại.', 'Đúng vị. Cảm ơn.', 'Hôm nay ông chủ tử tế ghê.']
+const GUN_LINES = [
+  'Ơ... súng để làm gì vậy?',
+  'Bình tĩnh, tôi chỉ muốn uống thôi.',
+  'Tôi là thú thật mà!',
+  'Khoan... hạ xuống đã, nói chuyện được không?',
+]
 const QUIRK_LABEL: Record<Quirk, string> = {
   bandage: 'vết băng bó',
   glasses: 'cặp kính',
@@ -160,6 +168,11 @@ export class Game {
   }
 
   private newGame(): void {
+    // Được gọi từ click nên mở được âm thanh; chế độ debug không có cử chỉ người dùng thì bỏ qua
+    if (!this.debug) {
+      sfx.unlock()
+      sfx.startMusic()
+    }
     this.clearCustomers()
     this.economy.money = 200
     this.economy.reputation = 50
@@ -189,6 +202,10 @@ export class Game {
   }
 
   private openBar(): void {
+    if (!this.debug) {
+      sfx.unlock()
+      sfx.startMusic()
+    }
     this.overlay.hide()
     this.state = 'open'
     this.hud.setVisible(true)
@@ -398,8 +415,15 @@ export class Game {
 
   private useDoor(open: boolean): void {
     this.doorUsers = Math.max(0, this.doorUsers + (open ? 1 : -1))
-    if (open && this.doorUsers === 1) this.bar.openDoor()
-    if (!open && this.doorUsers === 0) this.bar.closeDoor()
+    if (open && this.doorUsers === 1) {
+      this.bar.openDoor()
+      sfx.bell()
+      sfx.creak()
+    }
+    if (!open && this.doorUsers === 0) {
+      this.bar.closeDoor()
+      sfx.creak(true)
+    }
   }
 
   private spawnNext(): void {
@@ -456,6 +480,7 @@ export class Game {
   private walkOut(c: Customer): void {
     this.economy.addRep(REP_WALKOUT)
     this.economy.stats.walkedOut += 1
+    sfx.bad()
     this.economy.note(`${this.claim(c)} chờ quá lâu và bỏ về.`)
     toast(`Khách chờ lâu quá và bỏ về. Uy tín ${REP_WALKOUT}`, 'bad')
     this.dialog.say(this.claim(c), 'Lâu quá. Tôi đi đây.')
@@ -478,8 +503,11 @@ export class Game {
       this.economy.note(`${this.claim(c)} gọi ${drink.name}: đã phục vụ, khách hài lòng.`)
     }
     toast(`+$${price} · ${drink.name}`, 'good', 2)
+    sfx.clink()
+    tweens.delay(0.35, () => sfx.coin())
     this.dialog.say(this.claim(c), pick(THANKS))
     this.dialog.setPatience(null)
+    c.setMood('neutral')
     c.talk(1)
     // Khách nâng ly uống xong mới rời quán
     c.drink(drink.color, () => this.leave(c))
@@ -547,6 +575,8 @@ export class Game {
     }
     const rc = this.player.fire()
     this.effects.flash(this.player.muzzleWorld)
+    this.effects.casing(this.player.muzzleWorld, this.player.rightDir)
+    sfx.gunshot()
     screenFlash('white')
 
     const targets = [this.current, ...this.others].filter(
@@ -562,6 +592,12 @@ export class Game {
       }
     }
     if (!hit) {
+      // Trượt: để lại vết đạn trên tường / đồ đạc
+      const env = rc.intersectObject(this.bar.group, true)[0]
+      if (env && env.face) {
+        const normal = env.face.normal.clone().transformDirection(env.object.matrixWorld)
+        this.effects.bulletHole(env.point, normal)
+      }
       toast('Trượt.', 'info', 1.2)
       return
     }
@@ -585,6 +621,7 @@ export class Game {
       this.totalCaught += 1
       if (wasLeaving) this.economy.stats.slipped = Math.max(0, this.economy.stats.slipped - 1)
       this.effects.burst(c.chest, c.rig.furColor, 'chunk', 14)
+      tweens.delay(0.6, () => sfx.coin())
       toast(`Đúng là người! +$${BOUNTY}, uy tín +${REP_CATCH}`, 'good')
       this.dialog.say(who, 'Khốn... kiếp...')
       const clueNames = [...c.spec.clues].map((id) => CLUE_BY_ID[id].name).join(', ')
@@ -595,6 +632,7 @@ export class Game {
       this.economy.addRep(REP_MISFIRE)
       this.economy.stats.misfires += 1
       this.effects.burst(c.chest, c.rig.furColor, 'fur', 50)
+      tweens.delay(0.4, () => sfx.bad())
       screenFlash('red')
       toast(`Bắn nhầm thú thật! −$${MISFIRE_FINE}, uy tín ${REP_MISFIRE}`, 'bad', 4)
       this.dialog.say(who, 'Tại... sao...?')
@@ -635,6 +673,11 @@ export class Game {
     }
     if (this.journal.visible) return
 
+    if (inp.wasPressed('KeyM')) {
+      sfx.unlock()
+      toast(sfx.toggleMute() ? 'Âm thanh: tắt' : 'Âm thanh: bật', 'info', 1.4)
+    }
+
     if (this.cutscene) {
       // Trong cảnh đặc vụ: E / chuột trái / Space để tiếp lời, không bắn, không gọi menu yêu cầu
       if (inp.wasPressed('KeyE') || inp.wasPressed('Space') || inp.mousePressed[0]) {
@@ -661,11 +704,29 @@ export class Game {
     // Chuột trái, hoặc Space cho trackpad Mac
     if ((inp.mousePressed[0] || inp.wasPressed('Space')) && this.player.tool === 'gun') this.shoot()
     this.hud.setZoom(this.player.isZooming)
+    this.updateMood()
+  }
+
+  /** Khách ở quầy phản ứng: sợ khi thấy súng, nghi ngờ khi bị soi tận mặt. */
+  private updateMood(): void {
+    const c = this.current
+    if (!c || (c.state !== 'waiting' && c.state !== 'turning')) return
+    let mood: Mood = 'neutral'
+    if (this.player.tool === 'gun') mood = 'scared'
+    else if (this.player.isZooming && this.player.centerRay().intersectObject(c.root, true).length > 0) mood = 'suspicious'
+    c.setMood(mood)
   }
 
   private setTool(tool: Tool): void {
+    const wasGun = this.player.tool === 'gun'
     this.player.setTool(tool)
     this.hud.setTool(tool)
+    const c = this.current
+    if (tool === 'gun' && !wasGun && c && c.state === 'waiting' && !c.reactedToGun) {
+      c.reactedToGun = true
+      this.dialog.say(this.claim(c), pick(GUN_LINES))
+      c.talk(1.2)
+    }
   }
 
   private setHint(): void {

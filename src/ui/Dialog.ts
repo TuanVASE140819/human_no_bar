@@ -1,4 +1,5 @@
 import { $, show, esc } from './dom'
+import { sfx } from '@/core/Audio'
 
 /** Hộp thoại khách / đặc vụ. Chế độ chữ chạy dùng cho cảnh cốt truyện, kèm mũi tên "tiếp". */
 export class Dialog {
@@ -47,7 +48,9 @@ export class Dialog {
 
   update(dt: number): void {
     if (!this.typing) return
+    const before = Math.floor(this.shown / 3)
     this.shown = Math.min(this.full.length, this.shown + dt * this.speed)
+    if (Math.floor(this.shown / 3) !== before) sfx.blip()
     if (this.shown >= this.full.length) this.typing = false
     this.render()
   }

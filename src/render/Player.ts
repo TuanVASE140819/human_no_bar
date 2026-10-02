@@ -1,6 +1,6 @@
 import * as THREE from 'three'
 import type { Input } from '@/core/Input'
-import { mat, NO_OUTLINE_LAYER } from './materials'
+import { mat, canvasTexture, NO_OUTLINE_LAYER } from './materials'
 
 export type Tool = 'hands' | 'gun'
 
@@ -21,6 +21,9 @@ export class Player {
   private readonly handsGroup = new THREE.Group()
   private readonly gunGroup = new THREE.Group()
   private readonly muzzle = new THREE.Object3D()
+  private flash: THREE.Sprite | null = null
+  private flashLeft = 0
+  private shake = 0
   private recoil = 0
   private pitchKick = 0
   private bobT = 0
@@ -92,7 +95,35 @@ export class Player {
     this.gunGroup.add(rearHand)
     this.muzzle.position.set(0, 0.02, -0.66)
     this.gunGroup.add(this.muzzle)
+
+    // Chớp lửa đầu nòng: sprite cộng sáng, không vẽ viền
+    const flashTex = canvasTexture(128, 128, (ctx, w, h) => {
+      const grad = ctx.createRadialGradient(w / 2, h / 2, 2, w / 2, h / 2, w / 2)
+      grad.addColorStop(0, 'rgba(255,255,230,1)')
+      grad.addColorStop(0.25, 'rgba(255,214,120,0.9)')
+      grad.addColorStop(0.6, 'rgba(255,140,40,0.35)')
+      grad.addColorStop(1, 'rgba(255,120,20,0)')
+      ctx.fillStyle = grad
+      ctx.fillRect(0, 0, w, h)
+    })
+    const flashMat = new THREE.SpriteMaterial({
+      map: flashTex,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      transparent: true,
+    })
+    this.flash = new THREE.Sprite(flashMat)
+    this.flash.scale.set(0.34, 0.34, 1)
+    this.flash.position.copy(this.muzzle.position)
+    this.flash.visible = false
+    this.flash.layers.set(NO_OUTLINE_LAYER)
+    this.gunGroup.add(this.flash)
     this.viewmodel.add(this.gunGroup)
+  }
+
+  /** Hướng sang phải của camera (để văng vỏ đạn) */
+  get rightDir(): THREE.Vector3 {
+    return new THREE.Vector3(1, 0, 0).applyQuaternion(this.camera.quaternion)
   }
 
   setTool(tool: Tool): void {
@@ -158,15 +189,31 @@ export class Player {
 
     this.recoil = THREE.MathUtils.damp(this.recoil, 0, 9, dt)
     this.pitchKick = THREE.MathUtils.damp(this.pitchKick, 0, 7, dt)
+    this.shake = THREE.MathUtils.damp(this.shake, 0, 11, dt)
     this.gunGroup.position.z = -0.5 + this.recoil * 0.13
     this.gunGroup.rotation.x = this.recoil * 0.4
-    this.camera.rotation.set(this.pitch + this.pitchKick, this.yaw, 0)
+    // Rung camera nhẹ sau khi bắn
+    const jx = (Math.random() - 0.5) * 0.02 * this.shake
+    const jz = (Math.random() - 0.5) * 0.03 * this.shake
+    this.camera.rotation.set(this.pitch + this.pitchKick + jx, this.yaw, jz)
     this.viewmodel.visible = this.zoom < 0.6
+
+    if (this.flash && this.flashLeft > 0) {
+      this.flashLeft -= dt
+      if (this.flashLeft <= 0) this.flash.visible = false
+    }
   }
 
   fire(): THREE.Raycaster {
     this.recoil = 1
     this.pitchKick = 0.05
+    this.shake = 1
+    if (this.flash) {
+      this.flash.visible = true
+      this.flash.material.rotation = Math.random() * Math.PI * 2
+      this.flash.scale.setScalar(0.28 + Math.random() * 0.12)
+      this.flashLeft = 0.06
+    }
     const rc = new THREE.Raycaster()
     rc.setFromCamera(new THREE.Vector2(0, 0), this.camera)
     return rc

@@ -12,16 +12,53 @@ interface Particle {
 
 const FUR_GEO = new THREE.PlaneGeometry(0.06, 0.11)
 const CHUNK_GEO = new THREE.BoxGeometry(0.16, 0.16, 0.05)
+const CASING_GEO = new THREE.CylinderGeometry(0.007, 0.007, 0.024, 8)
+const HOLE_GEO = new THREE.CircleGeometry(0.055, 10)
+const MAX_HOLES = 24
 
-/** Hạt lông bay, mảnh costume, chớp sáng khi bắn. */
+/** Hạt lông bay, mảnh costume, vỏ đạn, vết đạn trên tường, chớp sáng khi bắn. */
 export class Effects {
   private readonly particles: Particle[] = []
+  private readonly holes: THREE.Mesh[] = []
   private readonly flashLight: THREE.PointLight
   private flashTimer = 0
 
   constructor(private readonly scene: THREE.Scene) {
     this.flashLight = new THREE.PointLight(0xfff2cc, 0, 9, 2)
     scene.add(this.flashLight)
+  }
+
+  /** Vỏ đạn văng sang phải rồi rơi xuống sàn */
+  casing(pos: THREE.Vector3, right: THREE.Vector3): void {
+    const mesh = new THREE.Mesh(CASING_GEO, mat(0xd4af37, { flat: false }))
+    mesh.position.copy(pos).addScaledVector(right, 0.08)
+    mesh.rotation.set(rand(0, Math.PI), rand(0, Math.PI), rand(0, Math.PI))
+    const vel = right
+      .clone()
+      .multiplyScalar(rand(1.4, 2.4))
+      .add(new THREE.Vector3(0, rand(2.0, 3.0), 0))
+    this.scene.add(mesh)
+    this.particles.push({
+      mesh,
+      vel,
+      spin: new THREE.Vector3(rand(-14, 14), rand(-14, 14), rand(-14, 14)),
+      life: 0,
+      maxLife: rand(1.3, 1.8),
+    })
+  }
+
+  /** Vết đạn: đĩa tối áp lên bề mặt tại điểm trúng */
+  bulletHole(point: THREE.Vector3, normal: THREE.Vector3): void {
+    const hole = new THREE.Mesh(HOLE_GEO, mat(0x1a120c, { flat: false }))
+    hole.position.copy(point).addScaledVector(normal, 0.004)
+    hole.lookAt(point.clone().add(normal))
+    hole.castShadow = false
+    this.scene.add(hole)
+    this.holes.push(hole)
+    if (this.holes.length > MAX_HOLES) {
+      const old = this.holes.shift()
+      if (old) this.scene.remove(old)
+    }
   }
 
   burst(pos: THREE.Vector3, color: number, kind: 'fur' | 'chunk', count = 40): void {

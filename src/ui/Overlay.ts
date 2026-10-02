@@ -1,6 +1,7 @@
 import { $, show, esc } from './dom'
 import type { DayConfig } from '@/data/difficulty'
 import type { DayStats } from '@/systems/Economy'
+import { sfx } from '@/core/Audio'
 
 export class Overlay {
   private readonly root = $('overlay')
@@ -53,6 +54,7 @@ export class Overlay {
         <div><span class="key">1 / 2</span> tay không / súng</div>
         <div><span class="key">Chuột trái</span> / <span class="key">Space</span> bắn</div>
         <div><span class="key">Tab</span> sổ tay</div>
+        <div><span class="key">M</span> tắt / bật âm thanh</div>
       </div>
       <div class="row">
         <button id="btn-start" class="primary">Bắt đầu ca làm</button>
@@ -152,11 +154,18 @@ export class Overlay {
       <div class="row">
         <button id="btn-resume" class="primary">Tiếp tục</button>
         <button id="btn-full" class="ghost">Toàn màn hình</button>
+        <button id="btn-sound" class="ghost">Âm thanh: ${sfx.muted ? 'Tắt' : 'Bật'}</button>
       </div>
     `,
       'pause',
     )
     this.bind('btn-resume', onResume)
     this.bindFullscreen('btn-full')
+    this.bind('btn-sound', () => {
+      sfx.unlock()
+      const muted = sfx.toggleMute()
+      const btn = this.panel.querySelector<HTMLButtonElement>('#btn-sound')
+      if (btn) btn.textContent = `Âm thanh: ${muted ? 'Tắt' : 'Bật'}`
+    })
   }
 }
