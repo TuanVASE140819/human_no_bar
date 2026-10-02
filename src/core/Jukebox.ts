@@ -64,7 +64,7 @@ export class Jukebox {
     return this.state === PLAYING
   }
 
-  /** Nạp API YouTube và tạo trình phát. Trả về true nếu sẵn sàng trong vòng 10 giây. */
+  /** Nạp API YouTube và tạo trình phát. Trả về true nếu sẵn sàng trong vòng 25 giây (mạng chậm vẫn kịp). */
   load(): Promise<boolean> {
     if (!this.enabled) return Promise.resolve(false)
     return new Promise((resolve) => {
@@ -73,7 +73,7 @@ export class Jukebox {
         if (!ok) this.fail()
         resolve(ok)
       }
-      const timer = window.setTimeout(() => done(false), 10000)
+      const timer = window.setTimeout(() => done(false), 25000)
       const create = () => {
         const YT = window.YT
         if (!YT) {
