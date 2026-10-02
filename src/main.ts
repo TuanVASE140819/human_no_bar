@@ -2,6 +2,7 @@ import './style.css'
 import { Game } from '@/core/Game'
 import { loadCharacterModels } from '@/characters/models'
 import { sfx } from '@/core/Audio'
+import { JUKEBOX } from '@/data/music'
 
 const canvas = document.getElementById('game') as HTMLCanvasElement | null
 if (!canvas) throw new Error('Thiếu <canvas id="game">')
@@ -39,11 +40,14 @@ if (!probe) {
 } else if (params.has('nomodels')) {
   start()
 } else {
-  // Nhạc riêng (public/audio/ballad.mp3 | .ogg | .wav, chỉ dùng bản thu bạn có quyền) tải song song với model
+  // Nhạc riêng (public/audio/ballad.mp3 | .ogg | .wav, chỉ dùng bản thu bạn có quyền): chỉ dò khi không dùng YouTube
   const base = `${import.meta.env.BASE_URL}audio/ballad.`
-  const music = sfx
-    .preloadTrack(['mp3', 'ogg', 'wav'].map((ext) => base + ext))
-    .then((url) => console.info(url ? `Nhạc nền: file riêng (${url}).` : 'Nhạc nền: bản ballad tổng hợp.'))
+  const useJukebox = JUKEBOX.videoId.length > 0 && !params.has('nojukebox')
+  const music = useJukebox
+    ? Promise.resolve(console.info('Nhạc nền: YouTube nhúng.'))
+    : sfx
+        .preloadTrack(['mp3', 'ogg', 'wav'].map((ext) => base + ext))
+        .then((url) => console.info(url ? `Nhạc nền: file riêng (${url}).` : 'Nhạc nền: bản ballad tổng hợp.'))
   Promise.all([
     loadCharacterModels().then((n) => console.info(`Đã tải ${n}/9 model nhân vật từ Blender.`)),
     music,
