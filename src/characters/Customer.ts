@@ -4,7 +4,7 @@ import type { CustomerSpec } from './generateCustomers'
 import { tweens, Easing } from '@/core/Tween'
 import { rand } from '@/core/rand'
 
-export type CustomerState = 'entering' | 'waiting' | 'turning' | 'leaving' | 'down' | 'gone'
+export type CustomerState = 'entering' | 'waiting' | 'turning' | 'drinking' | 'leaving' | 'down' | 'gone'
 
 export const PATIENCE_SECONDS = 45
 
@@ -67,6 +67,23 @@ export class Customer {
 
   talk(seconds = 1.4): void {
     this.talkLeft = seconds
+  }
+
+  /** Vẫy tay chào khi vừa tới quầy */
+  greet(): void {
+    this.rig.playOnce('Wave')
+  }
+
+  /** Nhận ly, nâng lên uống rồi gọi done (thường là rời quán). */
+  drink(color: number, done: () => void): void {
+    if (this.state !== 'waiting') return
+    this.state = 'drinking'
+    const seconds = this.rig.playOnce('Drink')
+    this.rig.holdGlass(color)
+    tweens.delay(seconds * 0.95, () => {
+      this.rig.releaseGlass()
+      if (this.state === 'drinking') done()
+    })
   }
 
   /** Quay lưng lại vài giây (để lộ khóa kéo / đuôi) rồi quay về. */
@@ -157,6 +174,7 @@ export class Customer {
     for (const e of this.rig.eyes) e.scale.setScalar(1.15)
     this.rig.setBlink(0)
     this.rig.setMouth(0.7)
+    this.rig.releaseGlass()
     this.talkLeft = 0
     if (reveal) {
       this.rig.body.visible = false

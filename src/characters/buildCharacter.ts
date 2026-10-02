@@ -3,6 +3,7 @@ import type { SpeciesDef } from '@/data/species'
 import type { ClueId, Quirk } from '@/data/clues'
 import { mat, darken, disposeTree, toonGradient } from '@/render/materials'
 import { rand } from '@/core/rand'
+import { tweens, Easing } from '@/core/Tween'
 import { hasModel, instantiateModel, type ModelInstance } from './models'
 
 /** Hướng đầu nhìn về người chơi (radian, trong không gian nhân vật) */
@@ -44,6 +45,11 @@ export interface CharacterRig {
   setMouth(open: number): void
   /** 0 = mở mắt, 1 = nhắm (mí trên kéo xuống) */
   setBlink(k: number): void
+  /** Chơi một lần cử chỉ (vẫy chào, nâng ly uống); trả về thời lượng giây */
+  playOnce(name: 'Wave' | 'Drink'): number
+  /** Cầm ly có màu đồ uống ở tay phải / bỏ ly */
+  holdGlass(color: number): void
+  releaseGlass(): void
   /** Animation mỗi khung: đi / đứng / nói, đầu hướng về look nếu có */
   update(dt: number, moving: boolean, talking: boolean, look: HeadLook | null): void
   baseScale: number
@@ -75,11 +81,12 @@ const bodyMatCache = new Map<string, THREE.MeshToonMaterial>()
  * Vật liệu thân cho model Blender: màu lông là màu chính, các vùng bụng / mảng mặt / mõm
  * trộn theo mặt nạ vertex color (R, G, B) nên ranh giới mượt, không răng cưa theo tam giác.
  */
-function bodyMaterial(furColor: number, species: SpeciesDef): THREE.MeshToonMaterial {
-  const key = `${furColor}|${species.id}`
+function bodyMaterial(furColor: number, species: SpeciesDef, withAo: boolean): THREE.MeshToonMaterial {
+  const key = `${furColor}|${species.id}|${withAo ? 'ao' : ''}`
   const cached = bodyMatCache.get(key)
   if (cached) return cached
   const m = new THREE.MeshToonMaterial({ color: furColor, gradientMap: toonGradient(), vertexColors: true })
+  if (withAo) m.defines = { USE_BAKED_AO: '' }
   const belly = new THREE.Color(species.bellyColor)
   const mask = new THREE.Color(species.maskColor ?? species.furColor)
   const snout = new THREE.Color(species.snoutColor)
@@ -89,10 +96,17 @@ function bodyMaterial(furColor: number, species: SpeciesDef): THREE.MeshToonMate
     shader.uniforms.maskColor = { value: mask }
     shader.uniforms.snoutColor = { value: snout }
     shader.uniforms.bandColor = { value: band }
+    // Bóng tiếp xúc nướng sẵn (_AO từ Blender) truyền qua varying
+    shader.vertexShader = shader.vertexShader
+      .replace(
+        '#include <color_pars_vertex>',
+        '#include <color_pars_vertex>\n#ifdef USE_BAKED_AO\nattribute float _ao;\nvarying float vAo;\n#endif',
+      )
+      .replace('#include <color_vertex>', '#include <color_vertex>\n#ifdef USE_BAKED_AO\nvAo = _ao;\n#endif')
     shader.fragmentShader = shader.fragmentShader
       .replace(
         '#include <color_pars_fragment>',
-        '#include <color_pars_fragment>\nuniform vec3 bellyColor;\nuniform vec3 maskColor;\nuniform vec3 snoutColor;\nuniform vec3 bandColor;',
+        '#include <color_pars_fragment>\nuniform vec3 bellyColor;\nuniform vec3 maskColor;\nuniform vec3 snoutColor;\nuniform vec3 bandColor;\n#ifdef USE_BAKED_AO\nvarying float vAo;\n#endif',
       )
       .replace(
         '#include <color_fragment>',
@@ -103,12 +117,26 @@ function bodyMaterial(furColor: number, species: SpeciesDef): THREE.MeshToonMate
         #ifdef USE_COLOR_ALPHA
         regionColor = mix(regionColor, bandColor, vColor.a);
         #endif
+        #ifdef USE_BAKED_AO
+        regionColor *= mix(0.62, 1.0, vAo);
+        #endif
         diffuseColor.rgb = regionColor;`,
       )
   }
-  m.customProgramCacheKey = () => 'body-region-mask'
+  m.customProgramCacheKey = () => (withAo ? 'body-region-mask-ao' : 'body-region-mask')
   bodyMatCache.set(key, m)
   return m
+}
+
+/** Ly đồ uống cầm tay: cốc thủy tinh mờ + chất lỏng màu món; gốc ở đáy ly. */
+function buildGlass(color: number): THREE.Group {
+  const g = new THREE.Group()
+  const glassM = mat(0xdfeeff, { transparent: true, opacity: 0.45, flat: false })
+  const cup = m(new THREE.CylinderGeometry(0.055, 0.045, 0.16, 12), glassM, 0, 0.08, 0)
+  cup.castShadow = false
+  g.add(cup)
+  g.add(m(new THREE.CylinderGeometry(0.05, 0.042, 0.105, 12), mat(color, SMOOTH), 0, 0.055, 0))
+  return g
 }
 
 const DEFAULT_LOOK: CharacterLook = { accessory: null, accent: 0xe63946 }
@@ -609,6 +637,7 @@ function buildProcedural(
 
   // Tay (pivot ở vai)
   const arms: THREE.Group[] = []
+  const fores: THREE.Group[] = []
   const hands: THREE.Group[] = []
   for (const sx of [-1, 1]) {
     const arm = new THREE.Group()
@@ -630,6 +659,7 @@ function buildProcedural(
     if (quirk === 'bandage' && sx === -1) addBandage(arm, 0, -0.17, 0)
     body.add(arm)
     arms.push(arm)
+    fores.push(fore)
     hands.push(hand)
   }
 
@@ -724,6 +754,8 @@ function buildProcedural(
 
   let idleT = rand(0, 10)
   let walkT = 0
+  let gestureLeft = 0
+  let glass: THREE.Group | null = null
   const s = species.height
   return {
     root,
@@ -735,8 +767,51 @@ function buildProcedural(
     brows,
     setMouth,
     setBlink: (k) => applyBlink(lids, k),
+    playOnce: (name) => {
+      // Tay phải là arms[0] (phía -x). Vẫy: giơ ngang ra ngoài rồi lắc; uống: đưa tay lên miệng.
+      const arm = arms[0]
+      const fore = fores[0]
+      const duration = name === 'Wave' ? 1.4 : 1.6
+      gestureLeft = duration
+      tweens.add({
+        duration,
+        ease: Easing.inOutQuad,
+        onUpdate: (t) => {
+          const k = Math.sin(Math.PI * t)
+          if (name === 'Wave') {
+            arm.rotation.z = -2.3 * k
+            fore.rotation.z = Math.sin(t * Math.PI * 4) * 0.5 * k
+          } else {
+            arm.rotation.x = 1.2 * k
+            fore.rotation.x = -0.4 - 1.9 * k
+            head.rotation.x = -0.25 * k
+          }
+        },
+        onComplete: () => {
+          arm.rotation.z = 0.1
+          fore.rotation.z = 0
+          fore.rotation.x = -0.4
+        },
+      })
+      return duration
+    },
+    holdGlass: (color) => {
+      if (glass) head.remove(glass)
+      glass = buildGlass(color)
+      glass.position.set(-0.07, -0.3, 0.4)
+      glass.rotation.set(-0.5, 0, 0.45)
+      head.add(glass)
+    },
+    releaseGlass: () => {
+      if (glass) {
+        head.remove(glass)
+        disposeTree(glass)
+        glass = null
+      }
+    },
     update: (dt, moving, talking, look) => {
       idleT += dt
+      gestureLeft = Math.max(0, gestureLeft - dt)
       if (moving) {
         walkT += dt * 9
         const swing = Math.sin(walkT)
@@ -744,14 +819,16 @@ function buildProcedural(
         legs[1].rotation.x = -swing * 0.6
         arms[0].rotation.x = -swing * 0.5
         arms[1].rotation.x = swing * 0.5
-      } else {
+      } else if (gestureLeft <= 0) {
         const sway = Math.sin(idleT * 1.3) * 0.04
         for (const leg of legs) leg.rotation.x = THREE.MathUtils.damp(leg.rotation.x, 0, 8, dt)
         arms[0].rotation.x = THREE.MathUtils.damp(arms[0].rotation.x, sway, 8, dt)
         arms[1].rotation.x = THREE.MathUtils.damp(arms[1].rotation.x, -sway, 8, dt)
       }
       body.scale.set(s, s * (1 + Math.sin(idleT * 2.2) * 0.012), s)
-      head.rotation.x = Math.sin(idleT * 0.7) * 0.03 + (talking ? Math.sin(idleT * 11) * 0.04 : 0) + (look?.pitch ?? 0)
+      if (gestureLeft <= 0) {
+        head.rotation.x = Math.sin(idleT * 0.7) * 0.03 + (talking ? Math.sin(idleT * 11) * 0.04 : 0) + (look?.pitch ?? 0)
+      }
       head.rotation.y = look?.yaw ?? 0
       setMouth(talking ? Math.abs(Math.sin(idleT * 22)) * 0.8 : 0)
     },
@@ -791,7 +868,8 @@ function buildFromModel(
     const mesh = o as THREE.Mesh
     if (!mesh.isMesh) return
     const src = mesh.material as THREE.Material
-    mesh.material = mesh.geometry.attributes.color ? bodyMaterial(furColor, species) : toonFromGltf(src.name, src, furColor)
+    const attrs = mesh.geometry.attributes
+    mesh.material = attrs.color ? bodyMaterial(furColor, species, !!attrs._ao) : toonFromGltf(src.name, src, furColor)
     mesh.castShadow = true
     mesh.receiveShadow = false
   })
@@ -871,6 +949,14 @@ function buildFromModel(
   talk?.setEffectiveWeight(0)
   if (idle) idle.time = rand(0, 3)
   const headBone = bone('Head')
+  const oneShots = new Map<string, THREE.AnimationAction>()
+  let gestureLeft = 0
+  let glass: THREE.Group | null = null
+  // Ly đặt trước miệng trong lúc uống (theo đầu), tay nâng lên che bớt phần đáy
+  const glassAnchor = new THREE.Group()
+  glassAnchor.position.set(-0.07, -0.3, 0.4)
+  glassAnchor.rotation.set(-0.5, 0, 0.45)
+  head.add(glassAnchor)
   let walkW = 0
   let talkW = 0
   let t = 0
@@ -885,12 +971,43 @@ function buildFromModel(
     brows,
     setMouth,
     setBlink: (k) => applyBlink(lids, k),
+    playOnce: (name) => {
+      const clip = THREE.AnimationClip.findByName(inst.clips, name)
+      if (!clip) return 0.8
+      let a = oneShots.get(name)
+      if (!a) {
+        a = mixer.clipAction(clip)
+        a.setLoop(THREE.LoopOnce, 1)
+        a.clampWhenFinished = false
+        oneShots.set(name, a)
+      }
+      a.reset()
+      a.setEffectiveWeight(1)
+      a.play()
+      gestureLeft = clip.duration
+      return clip.duration
+    },
+    holdGlass: (color) => {
+      if (glass) glassAnchor.remove(glass)
+      glass = buildGlass(color)
+      glassAnchor.add(glass)
+    },
+    releaseGlass: () => {
+      if (glass) {
+        glassAnchor.remove(glass)
+        disposeTree(glass)
+        glass = null
+      }
+    },
     update: (dt, moving, talking, look) => {
       walkW = THREE.MathUtils.damp(walkW, moving ? 1 : 0, 10, dt)
       talkW = THREE.MathUtils.damp(talkW, talking ? 1 : 0, 12, dt)
-      idle?.setEffectiveWeight(1 - walkW * 0.85)
+      gestureLeft = Math.max(0, gestureLeft - dt)
+      // Khi đang vẫy / uống, hạ trọng số Idle để cử chỉ không bị trộn loãng
+      const gesture = gestureLeft > 0 ? 0.15 : 1
+      idle?.setEffectiveWeight((1 - walkW * 0.85) * gesture)
       walk?.setEffectiveWeight(walkW)
-      talk?.setEffectiveWeight(talkW)
+      talk?.setEffectiveWeight(talkW * gesture)
       t += dt
       setMouth(talking ? Math.abs(Math.sin(t * 22)) * 0.8 : 0)
       mixer.update(dt)

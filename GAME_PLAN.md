@@ -243,6 +243,8 @@ Dữ liệu ở `src/data/story.ts`; hộp thoại chữ chạy, bấm E / chu�
 > **Cập nhật 01/10/2026:** các gói động vật CC0 kể trên đều là thú bốn chân, không hợp với khách đứng hai chân trong costume và không gắn được manh mối. Thay vào đó đã nâng giai đoạn A lên "procedural chi tiết": tay chân có khớp vung khi đi, mõm riêng từng loài, mắt có mống màu và điểm sáng, lông mày, má, răng cửa, phụ kiện ngẫu nhiên (nơ, khăn, dải băng chéo, dây đeo, mũ quả dưa, mũ nồi). Xem bằng `?lineup`.
 >
 > **Giai đoạn B thực tế (cùng ngày):** thân nhân vật được dựng bằng Blender qua script `tools/blender/build_characters.py` (ghép khối → Remesh voxel → Smooth → Decimate thành một lưới liền, armature 20 xương với trọng số tự động, clip Idle / Walk / Talk, mặt nạ vùng màu bằng vertex color để game trộn bụng / mảng mặt / mõm mượt). Mắt có mí chớp, miệng cười, lông mày, phụ kiện và các manh mối vẫn do game gắn vào xương lúc chạy. Đầu khách quay theo người chơi. Model nằm ở `public/models/*.glb`, dựng lại bằng `npm run assets`.
+>
+> **Đợt nâng 02/10/2026:** đầu có gò trán, gò má, cằm; tay chân dày mỏng theo loài, hươu và lợn rừng móng guốc, thỏ bàn chân dài, cáo và sói có yếm lông ngực, lợn rừng bờm gai; bóng tiếp xúc (AO) nướng vào thuộc tính `_AO` trên đỉnh và nhân vào màu trong shader; thêm clip Wave (vẫy chào khi tới quầy) và Drink (nâng ly uống khi được phục vụ, ly đặt trước miệng theo đầu, màu theo món).
 
 **Người bên trong costume:** một mesh người đơn giản, da xám xịt, mặc đồ rách. Chỉ xuất hiện 2 giây khi costume rơi sau khi bị bắn đúng, và trong đêm.
 

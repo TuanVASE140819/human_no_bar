@@ -26,32 +26,33 @@ from mathutils import Matrix, Vector
 
 # ---------------------------------------------------------------- Tham số loài
 # torso / hips: bán kính ellipsoid (x, y, z) theo hệ Three.js; đồng bộ torsoScale trong src/data/species.ts
+# limb: hệ số độ dày tay chân; feet: 'paw' | 'hoof' | 'long' (thỏ); fluff: 'chest' (lông ngực) | 'mane' (bờm gai)
 SPECIES = {
     'bear': dict(fur=0x6B4423, belly=0x9C7A52, snoutColor=0xC9A27E, nose=0x1A1A1A,
                  ear='round', earInner=0x9C7A52, tail='stub', snout='short',
-                 torso=(0.33, 0.42, 0.3), hips=(0.3, 0.17, 0.26)),
+                 torso=(0.33, 0.42, 0.3), hips=(0.3, 0.17, 0.26), limb=1.15, feet='paw'),
     'fox': dict(fur=0xE0782A, belly=0xF5EDE0, snoutColor=0xF5EDE0, nose=0x1A1A1A,
                 ear='pointed', earTip=0x1A1A1A, tail='bushy', tailTip=0xF5EDE0,
                 snout='long', mask=0xF5EDE0, cheeks='tufts',
-                torso=(0.285, 0.41, 0.27), hips=(0.27, 0.16, 0.24)),
+                torso=(0.285, 0.41, 0.27), hips=(0.27, 0.16, 0.24), limb=0.9, feet='paw', fluff='chest'),
     'rabbit': dict(fur=0xEDEDED, belly=0xFFFFFF, snoutColor=0xF2B8C6, nose=0xD96A8A,
                    ear='long', earInner=0xF2B8C6, tail='puff', snout='short',
-                   torso=(0.28, 0.4, 0.265), hips=(0.28, 0.16, 0.25)),
+                   torso=(0.28, 0.4, 0.265), hips=(0.28, 0.16, 0.25), limb=0.9, feet='long'),
     'boar': dict(fur=0x6E645A, belly=0x8A7F73, snoutColor=0xB08A78, nose=0x5A4038,
                  ear='small', tail='short', snout='flat', tusks=True,
-                 torso=(0.33, 0.4, 0.31), hips=(0.31, 0.17, 0.27)),
+                 torso=(0.33, 0.4, 0.31), hips=(0.31, 0.17, 0.27), limb=1.1, feet='hoof', fluff='mane'),
     'wolf': dict(fur=0x8C8F96, belly=0xD9DBDE, snoutColor=0xD9DBDE, nose=0x1A1A1A,
                  ear='pointed', tail='long', snout='long', mask=0xD9DBDE, cheeks='tufts',
-                 torso=(0.3, 0.42, 0.28), hips=(0.28, 0.16, 0.25)),
+                 torso=(0.3, 0.42, 0.28), hips=(0.28, 0.16, 0.25), limb=1.0, feet='paw', fluff='chest'),
     'deer': dict(fur=0xB98A4B, belly=0xE8D8B8, snoutColor=0xE8D8B8, nose=0x1A1A1A,
                  ear='wide', earInner=0xE8D8B8, tail='flag', tailTip=0xFFFFFF,
                  snout='medium', mask=0xE8D8B8, spots=True, antlers=True,
-                 torso=(0.275, 0.42, 0.26), hips=(0.26, 0.16, 0.24)),
+                 torso=(0.275, 0.42, 0.26), hips=(0.26, 0.16, 0.24), limb=0.82, feet='hoof'),
     # Đặc vụ cốt truyện: lửng mặt trắng, dải sọc đen ngang mắt (kênh alpha của mặt nạ)
     'badger': dict(fur=0x474C55, belly=0x8F959D, snoutColor=0xECECEC, nose=0x111111,
                    ear='round', earInner=0xCFCFCF, tail='bushy', tailTip=0xBFBFBF,
                    snout='medium', mask=0xECECEC, band=0x1C1C1C,
-                   torso=(0.32, 0.41, 0.3), hips=(0.3, 0.17, 0.26)),
+                   torso=(0.32, 0.41, 0.3), hips=(0.3, 0.17, 0.26), limb=1.05, feet='paw'),
 }
 
 HEAD = Vector((0.0, 1.84, 0.0))
@@ -342,15 +343,20 @@ def snout_region(spec):
 
 def build_body(spec, fur, furdark, belly, snoutM, maskM):
     bm = bmesh.new()
-    # Đầu + mõm
+    k = spec.get('limb', 1.0)
+    # Đầu: cầu chính + gò trán, hai gò má, cằm để đầu không tròn lẳn
     ell(bm, HEAD, (0.36, 0.338, 0.346), seg=32, rings=20)
+    ell(bm, (0, HEAD.y + 0.12, 0.17), (0.3, 0.14, 0.22))
+    for sx in (-1, 1):
+        ell(bm, (sx * 0.2, HEAD.y - 0.1, 0.2), (0.17, 0.14, 0.16))
+    ell(bm, (0, HEAD.y - 0.25, 0.14), (0.2, 0.11, 0.17))
     sc, sr = snout_region(spec)
     if spec['snout'] == 'flat':
         ell(bm, sc, sr)
         cyl(bm, (0, HEAD.y - 0.08, 0.3), (0, HEAD.y - 0.08, 0.43), 0.1, 0.11)
     else:
         ell(bm, sc, sr)
-    # Cổ, thân, hông
+    # Cổ, thân, hông; vai hơi nhô
     cyl(bm, (0, 1.38, 0), (0, 1.58, 0), 0.125, 0.11)
     ell(bm, (0, 1.0, 0), spec['torso'], seg=32, rings=20)
     ell(bm, (0, 0.66, 0), spec['hips'])
@@ -360,21 +366,50 @@ def build_body(spec, fur, furdark, belly, snoutM, maskM):
         sh = (sx * arm_x, 1.3, 0)
         el = (sx * elbow_x, 0.97, 0)
         wr = (sx * wrist_x, 0.66, 0.125)
-        ell(bm, sh, 0.09)
-        cyl(bm, sh, el, 0.08, 0.077)
-        ell(bm, el, 0.075)
-        cyl(bm, el, wr, 0.07, 0.066)
-        ell(bm, wr, 0.066)
-        # Chân
-        cyl(bm, (sx * 0.15, 0.62, 0), (sx * 0.15, 0.36, 0), 0.105, 0.095)
-        ell(bm, (sx * 0.15, 0.36, 0), 0.09)
-        cyl(bm, (sx * 0.15, 0.36, 0), (sx * 0.15, 0.1, 0.01), 0.085, 0.08)
-        ell(bm, (sx * 0.15, 0.1, 0.01), 0.075)
+        ell(bm, sh, 0.09 * k)
+        cyl(bm, sh, el, 0.08 * k, 0.077 * k)
+        ell(bm, el, 0.075 * k)
+        cyl(bm, el, wr, 0.07 * k, 0.066 * k)
+        ell(bm, wr, 0.066 * k)
+        # Chân: đùi dày hơn ống chân, đầu gối hơi nhô
+        cyl(bm, (sx * 0.15, 0.62, 0), (sx * 0.15, 0.36, 0), 0.105 * k, 0.09 * k)
+        ell(bm, (sx * 0.15, 0.36, 0.01), 0.088 * k)
+        cyl(bm, (sx * 0.15, 0.36, 0), (sx * 0.15, 0.1, 0.01), 0.08 * k, 0.07 * k)
+        ell(bm, (sx * 0.15, 0.1, 0.01), 0.07 * k)
     body = bm_to_object('Body', bm, [fur])
     blobify(body, voxel=0.021, smooth=(0.5, 5), ratio=0.16)
     paint_masks(body, spec, sc, sr)
+    bake_ao(body)
     del belly, snoutM, maskM
     return body
+
+
+def bake_ao(ob, samples=16, max_dist=0.45):
+    """Nướng bóng tiếp xúc (ambient occlusion) vào thuộc tính _AO trên đỉnh bằng raycast BVH.
+    Game nhân vào màu nền để có khối: tối dưới cằm, nách, giữa hai chân."""
+    from mathutils.bvhtree import BVHTree
+    me = ob.data
+    bvh = BVHTree.FromPolygons([v.co.copy() for v in me.vertices], [tuple(p.vertices) for p in me.polygons])
+    attr = me.attributes.new('_AO', 'FLOAT', 'POINT')
+    dirs = []
+    golden = 2.399963
+    for i in range(samples):
+        z = 1.0 - ((i + 0.5) / samples) * 0.9
+        r = math.sqrt(max(0.0, 1.0 - z * z))
+        dirs.append(Vector((r * math.cos(i * golden), r * math.sin(i * golden), z)))
+    for v in me.vertices:
+        n = v.normal.normalized()
+        helper = Vector((0, 0, 1)) if abs(n.z) < 0.9 else Vector((1, 0, 0))
+        t = n.cross(helper).normalized()
+        b = n.cross(t)
+        origin = v.co + n * 0.004
+        occ = 0.0
+        for d in dirs:
+            wd = t * d.x + b * d.y + n * d.z
+            loc, _nor, _idx, dist = bvh.ray_cast(origin, wd, max_dist)
+            if loc is not None:
+                occ += 1.0 - 0.5 * (dist / max_dist)
+        attr.data[v.index].value = max(0.0, 1.0 - (occ / samples) * 0.9)
 
 
 def ell_dist(p, c, r):
@@ -511,12 +546,53 @@ def build_paws_feet(spec, arm, furdark):
 
         fx = sx * 0.15
         bm = bmesh.new()
-        ell(bm, (fx, 0.06, 0.05), (0.12, 0.06, 0.168))
-        for i in (-1, 0, 1):
-            ell(bm, (fx + i * 0.07, 0.05, 0.2), (0.04, 0.032, 0.04), seg=12, rings=8)
-        foot = bm_to_object('FootMesh.' + s, bm, [furdark])
+        feet = spec.get('feet', 'paw')
+        if feet == 'hoof':
+            # Móng guốc: bàn chân hẹp, cao, chẻ đôi, màu sừng sẫm
+            for i in (-1, 1):
+                ell(bm, (fx + i * 0.045, 0.06, 0.07), (0.05, 0.06, 0.11))
+            foot = bm_to_object('FootMesh.' + s, bm, [material('Hoof', 0x2B2320)])
+        elif feet == 'long':
+            # Bàn chân thỏ dài
+            ell(bm, (fx, 0.055, 0.1), (0.1, 0.05, 0.24))
+            for i in (-1, 0, 1):
+                ell(bm, (fx + i * 0.06, 0.05, 0.31), (0.035, 0.03, 0.045), seg=12, rings=8)
+            foot = bm_to_object('FootMesh.' + s, bm, [furdark])
+        else:
+            ell(bm, (fx, 0.06, 0.05), (0.12, 0.06, 0.168))
+            for i in (-1, 0, 1):
+                ell(bm, (fx + i * 0.07, 0.05, 0.2), (0.04, 0.032, 0.04), seg=12, rings=8)
+            foot = bm_to_object('FootMesh.' + s, bm, [furdark])
         blobify(foot, voxel=0.012, smooth=(0.4, 3), ratio=0.3)
         skin_to_bone(foot, arm, 'Foot.' + s)
+
+
+def build_fluff(spec, arm, fur, belly, maskM):
+    """Lông viền tạo bóng dáng: lông ngực (cáo, sói) hoặc bờm gai dọc gáy (lợn rừng)."""
+    kind = spec.get('fluff')
+    if kind == 'chest':
+        bm = bmesh.new()
+        tw = spec['torso'][0] / 0.31
+        # Yếm lông xù: hai hàng cụm cầu chồng lên nhau quanh cổ, không có đầu nhọn
+        for i in range(9):
+            a = -1.25 + i * (2.5 / 8)
+            x = math.sin(a) * 0.24 * tw
+            z = math.cos(a) * 0.28 * tw - 0.02
+            ell(bm, (x, 1.3, z), (0.075, 0.06, 0.06), seg=10, rings=8)
+            if i < 8:
+                a2 = a + 2.5 / 16
+                ell(bm, (math.sin(a2) * 0.25 * tw, 1.22, math.cos(a2) * 0.29 * tw - 0.02), (0.06, 0.05, 0.05), seg=10, rings=8)
+        ob = bm_to_object('ChestFluff', bm, [maskM if maskM else belly])
+        skin_to_bone(ob, arm, 'Chest')
+    elif kind == 'mane':
+        bm = bmesh.new()
+        pts = [(0, HEAD.y + 0.34, -0.06), (0, HEAD.y + 0.3, -0.2), (0, HEAD.y + 0.2, -0.3),
+               (0, HEAD.y + 0.06, -0.34), (0, 1.5, -0.2), (0, 1.38, -0.28), (0, 1.26, -0.31)]
+        for i, p in enumerate(pts):
+            h = 0.16 if i < 4 else 0.13
+            cone_at(bm, p, h, 0.045, rot=rot_three(rx=-0.5 - i * 0.12), seg=8)
+        ob = bm_to_object('Mane', bm, [material('FurDark', 0)])
+        skin_to_bone(ob, arm, 'Head')
 
 
 def build_head_parts(spec, arm, fur, maskM, belly):
@@ -646,6 +722,25 @@ def animate(arm):
         talk.append(('Neck', f, (v * 0.5, 0, 0), None))
     make_action(arm, 'Talk', 12, talk)
 
+    # Wave 1.4 s (chơi một lần): giơ tay phải lên vẫy hai nhịp
+    wave = []
+    for f, raise_, wig in ((0, 0.0, 0.0), (8, 2.3, 0.0), (13, 2.4, 0.6), (18, 2.4, -0.6), (23, 2.4, 0.6),
+                           (28, 2.3, 0.0), (34, 0.0, 0.0)):
+        wave.append(('UpperArm.R', f, (0, 0, raise_), None))
+        wave.append(('Forearm.R', f, (-0.4, 0, wig), None))
+        wave.append(('Head', f, (0, 0, 0.08 * (raise_ / 2.4)), None))
+    make_action(arm, 'Wave', 34, wave)
+
+    # Drink 1.6 s (chơi một lần): nâng ly lên miệng (tay đưa ra trước, khép vào giữa), ngửa đầu, hạ xuống
+    drink = []
+    for f, up, bend, head in ((0, 0.0, 0.0, 0.0), (10, -1.5, -2.2, 0.0), (18, -1.75, -2.55, -0.3),
+                              (28, -1.75, -2.55, -0.32), (38, 0.0, 0.0, 0.0)):
+        k = up / -1.75
+        drink.append(('UpperArm.R', f, (up, 0, 0.6 * k), None))
+        drink.append(('Forearm.R', f, (bend, 0, 0), None))
+        drink.append(('Head', f, (head, 0, 0), None))
+    make_action(arm, 'Drink', 38, drink)
+
 
 # ---------------------------------------------------------------- Xuất
 
@@ -655,7 +750,7 @@ def export_glb(path):
         filepath=path, export_format='GLB', export_yup=True, export_apply=True,
         export_animations=True, export_animation_mode='NLA_TRACKS', export_skins=True,
         export_morph=False, export_texcoords=False, export_normals=True,
-        export_vertex_color='ACTIVE', export_all_vertex_colors=False,
+        export_vertex_color='ACTIVE', export_all_vertex_colors=False, export_attributes=True,
         export_materials='EXPORT', export_cameras=False, export_lights=False,
         export_rest_position_armature=True, export_def_bones=False,
         export_optimize_animation_size=False,
@@ -690,6 +785,7 @@ def build_species(sid, spec, out_dir):
     build_tail(spec, arm, fur, belly)
     build_paws_feet(spec, arm, furdark)
     build_head_parts(spec, arm, fur, maskM, belly)
+    build_fluff(spec, arm, fur, belly, maskM)
     animate(arm)
 
     tris = sum(len(p.vertices) - 2 for o in scene.objects if o.type == 'MESH' for p in o.data.polygons)

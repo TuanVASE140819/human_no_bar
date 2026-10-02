@@ -415,6 +415,7 @@ export class Game {
         if (this.current !== c) return
         c.state = 'waiting'
         c.face(0)
+        c.greet()
         c.talk(1.6)
         this.dialog.say(this.claim(c), `${spec.greeting} Cho tôi một ${DRINKS[spec.order].name}.`)
         this.dialog.setPatience(1)
@@ -478,8 +479,11 @@ export class Game {
     }
     toast(`+$${price} · ${drink.name}`, 'good', 2)
     this.dialog.say(this.claim(c), pick(THANKS))
+    this.dialog.setPatience(null)
     c.talk(1)
-    this.leave(c)
+    // Khách nâng ly uống xong mới rời quán
+    c.drink(drink.color, () => this.leave(c))
+    this.setHint()
   }
 
   private openRequest(): void {
@@ -671,6 +675,8 @@ export class Game {
       this.hud.setHint(
         '<b>E</b> phục vụ · <b>Q</b> yêu cầu · <b>Chuột phải</b> soi · <b>2</b> súng · <b>Tab</b> sổ tay',
       )
+    } else if (c && c.state === 'drinking') {
+      this.hud.setHint('Khách đang uống... · <b>Tab</b> sổ tay')
     } else if (c) {
       this.hud.setHint('Khách đang vào... · <b>Tab</b> sổ tay')
     } else if (!this.lineup) {
