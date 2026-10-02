@@ -55,7 +55,11 @@ export class Hud {
     this.crosshair.classList.toggle('zoom', z)
   }
 
+  private lastHint = ''
+
   setHint(html: string): void {
+    if (html === this.lastHint) return
+    this.lastHint = html
     this.hint.innerHTML = html
   }
 }

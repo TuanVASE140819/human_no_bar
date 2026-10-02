@@ -156,6 +156,22 @@ class AudioSystem {
     this.tone(60, 0.22, 0.6, { type: 'sine', freqEnd: 34 })
   }
 
+  /** Rót nước: tiếng ồn qua bandpass hạ dần + nốt sine cao dần (gọi lặp mỗi nửa giây khi đang châm) */
+  pour(): void {
+    if (!this.on()) return
+    this.burst(0.5, 0.22, { filter: { type: 'bandpass', freq: 1100, freqEnd: 650, q: 1.1 } })
+    this.tone(320, 0.5, 0.05, { type: 'sine', freqEnd: 520 })
+  }
+
+  /** Gõ cửa kho ba tiếng khi hàng tới */
+  knock(): void {
+    if (!this.on()) return
+    for (let i = 0; i < 3; i++) {
+      this.burst(0.08, 0.45, { filter: { type: 'lowpass', freq: 220 }, at: i * 0.24 })
+      this.tone(90, 0.1, 0.3, { type: 'sine', freqEnd: 60, at: i * 0.24 })
+    }
+  }
+
   // ---------- Nhạc nền ----------
 
   startMusic(): void {

@@ -42,7 +42,8 @@ import { sfx } from './Audio'
 import type { Mood } from '@/characters/buildCharacter'
 import { DayClock } from '@/systems/DayClock'
 import { dayConfig, TOTAL_DAYS } from '@/data/difficulty'
-import { DRINKS } from '@/data/drinks'
+import { DRINKS, DRINK_IDS, type DrinkId } from '@/data/drinks'
+import { Inventory, cratePrice, CRATE_SERVINGS, MAX_STOCK } from '@/systems/Inventory'
 import { CLUE_BY_ID, type Quirk } from '@/data/clues'
 import { Hud } from '@/ui/Hud'
 import { Dialog } from '@/ui/Dialog'
@@ -52,6 +53,14 @@ import { Overlay } from '@/ui/Overlay'
 import { toast, screenFlash } from '@/ui/Toast'
 
 type GameState = 'menu' | 'morning' | 'open' | 'closing' | 'summary' | 'gameover' | 'win'
+
+/** Vật người chơi đang nhìn vào ở cự ly tương tác */
+interface Focus {
+  kind: 'crate' | 'dispenser'
+  id: DrinkId
+}
+
+const FILL_SECONDS = 2.2
 
 const THANKS = ['Cảm ơn ông chủ!', 'Tuyệt. Hẹn gặp lại.', 'Đúng vị. Cảm ơn.', 'Hôm nay ông chủ tử tế ghê.']
 const GUN_LINES = [
@@ -76,7 +85,16 @@ export class Game {
   private readonly postfx: PostFX
   private readonly bar: BarWorld
   private readonly economy = new Economy()
+  private readonly inventory = new Inventory()
   private readonly clock = new DayClock()
+
+  /** Tồn kho: thùng đang vác, tiến độ châm (0..1), vật đang nhìn, menu đặt hàng */
+  private carry: DrinkId | null = null
+  private fill = 0
+  private focus: Focus | null = null
+  private orderOpen = false
+  private frameDt = 0
+  private pourTimer = 0
   private readonly hud = new Hud()
   private readonly dialog = new Dialog()
   private readonly request = new RequestMenu()
@@ -142,6 +160,7 @@ export class Game {
     this.bar = buildBar(this.scene)
     for (const lamp of this.bar.lamps) this.lighting.addLamp(lamp)
     this.lighting.update(0)
+    this.syncStock()
     this.postfx = new PostFX(this.renderer, this.scene, this.player.camera)
     // ?nofx tắt viền toon và hậu kỳ cho máy yếu
     this.postfx.enabled = !params.has('nofx')
@@ -162,6 +181,8 @@ export class Game {
     this.debug = true
     this.forceIntro = intro
     this.storyFirst = storyFirst
+    // Giao hàng nhanh để kiểm thử
+    this.inventory.deliverySeconds = 3
     this.newGame()
     if (day > 1) {
       this.day = Math.min(day, TOTAL_DAYS)
@@ -210,6 +231,10 @@ export class Game {
     this.totalCaught = 0
     this.storyFlags = newStoryFlags()
     this.yesterday = null
+    this.inventory.reset()
+    this.setCarry(null)
+    for (const c of this.bar.crates.slice()) this.bar.removeCrate(c)
+    this.syncStock()
     this.day = 1
     this.setTool('hands')
     this.startDay()
@@ -546,12 +571,15 @@ export class Game {
     this.agent?.update(dt)
     this.dialog.update(dt)
     this.effects.update(dt)
+    this.bar.update(dt)
+    for (const id of this.inventory.update(dt)) this.onDelivered(id)
 
     this.postfx.render(dt)
     this.input.endFrame()
   }
 
   private updateOpen(dt: number): void {
+    this.frameDt = dt
     // Đồng hồ dừng khi đặc vụ đang nói
     if (!this.cutscene) this.clock.update(dt)
     this.lighting.update(this.clock.progress)
@@ -579,7 +607,121 @@ export class Game {
       if (c.patience <= 0) this.walkOut(c)
     }
 
+    this.updateFocus()
     this.handleInput()
+    this.updateHint()
+  }
+
+  // ---------- Tồn kho: đặt hàng, vác thùng, châm bình ----------
+
+  /** Đồng bộ mức nước các bình và bảng menu với tồn kho */
+  private syncStock(): void {
+    for (const id of DRINK_IDS) this.bar.setLevel(id, this.inventory.level(id))
+    this.bar.setSoldOut(this.inventory.soldOut)
+  }
+
+  private onDelivered(id: DrinkId): void {
+    this.bar.spawnCrate(id)
+    sfx.knock()
+    toast(`Hàng tới: thùng ${DRINKS[id].name} đặt dưới sàn, bên phải cạnh cửa kho`, 'info', 3.5)
+    this.economy.note(`Nhận thùng ${DRINKS[id].name}.`)
+  }
+
+  private openOrderMenu(): void {
+    this.request.open(
+      DRINK_IDS.map((id, i) => ({
+        key: String(i + 1),
+        label: `${DRINKS[id].name} · $${cratePrice(id)} · còn ${this.inventory.stock[id]}`,
+        disabled: this.economy.money < cratePrice(id),
+      })),
+      `Đặt hàng · thùng ${CRATE_SERVINGS} ly · tới sau ${Math.round(this.inventory.deliverySeconds)} giây`,
+    )
+    this.orderOpen = true
+    this.hud.setHint('<b>1</b>–<b>8</b> đặt thùng · <b>R</b> đóng')
+  }
+
+  private closeOrderMenu(): void {
+    this.orderOpen = false
+    this.request.close()
+  }
+
+  orderDrink(id: DrinkId): void {
+    const price = cratePrice(id)
+    if (!this.economy.spend(price)) {
+      toast('Không đủ tiền đặt hàng.', 'bad', 1.6)
+      sfx.bad()
+      return
+    }
+    this.inventory.order(id)
+    sfx.bell()
+    toast(`Đã đặt thùng ${DRINKS[id].name} (−$${price}), tới sau ${Math.round(this.inventory.deliverySeconds)} giây`, 'good', 3)
+    this.economy.note(`Đặt thùng ${DRINKS[id].name}: −$${price}.`)
+    this.closeOrderMenu()
+  }
+
+  private setCarry(id: DrinkId | null): void {
+    this.carry = id
+    this.fill = 0
+    this.player.setCarry(id ? DRINKS[id].color : null)
+  }
+
+  private pickCrate(id: DrinkId): void {
+    const crate = this.bar.crates.find((c) => c.id === id)
+    if (!crate) return
+    this.bar.removeCrate(crate)
+    this.setCarry(id)
+    sfx.thud()
+  }
+
+  /** Giữ E trước đúng bình để châm; xong thì tồn kho tăng và thùng biến mất */
+  private updateFilling(): void {
+    const f = this.focus
+    const id = this.carry
+    if (!id || !f || f.kind !== 'dispenser' || f.id !== id || !this.input.isDown('KeyE')) return
+    this.fill = Math.min(1, this.fill + this.frameDt / FILL_SECONDS)
+    const stock = this.inventory.stock[id]
+    this.bar.setLevel(id, Math.min(1, (stock + CRATE_SERVINGS * this.fill) / MAX_STOCK))
+    this.pourTimer -= this.frameDt
+    if (this.pourTimer <= 0) {
+      sfx.pour()
+      this.pourTimer = 0.5
+    }
+    if (this.fill >= 1) {
+      this.inventory.add(id, CRATE_SERVINGS)
+      this.setCarry(null)
+      this.syncStock()
+      sfx.clink()
+      toast(`Đã châm ${DRINKS[id].name}: ${this.inventory.stock[id]}/${MAX_STOCK}`, 'good', 2.2)
+      this.economy.note(`Châm ${DRINKS[id].name}.`)
+    }
+  }
+
+  /** Raycast từ tâm màn hình vào bình và thùng trong tầm với */
+  private updateFocus(): void {
+    const rc = this.player.centerRay()
+    rc.far = 3.2
+    const hits = rc.intersectObjects(this.bar.interactables(), true)
+    let found: Focus | null = null
+    for (const h of hits) {
+      let o: THREE.Object3D | null = h.object
+      while (o && !found) {
+        if (o.userData.crate) found = { kind: 'crate', id: o.userData.crate as DrinkId }
+        else if (o.userData.drink) found = { kind: 'dispenser', id: o.userData.drink as DrinkId }
+        o = o.parent
+      }
+      if (found) break
+    }
+    this.focus = found
+  }
+
+  /** Dùng khi kiểm thử headless: quay camera nhìn vào một điểm */
+  debugLookAt(x: number, y: number, z: number): void {
+    const p = this.player.camera.position
+    const dx = x - p.x
+    const dy = y - p.y
+    const dz = z - p.z
+    this.player.yaw = Math.atan2(-dx, -dz)
+    this.player.pitch = Math.atan2(dy, Math.hypot(dx, dz))
   }
 
   private updateClosing(dt: number): void {
@@ -632,7 +774,8 @@ export class Game {
           return
         }
         c.talk(1.6)
-        this.dialog.say(this.claim(c), `${spec.greeting} Cho tôi một ${DRINKS[spec.order].name}.`)
+        const out = this.inventory.has(spec.order) ? '' : ' Hết rồi à? Tôi đợi được một lát.'
+        this.dialog.say(this.claim(c), `${spec.greeting} Cho tôi một ${DRINKS[spec.order].name}.${out}`)
         this.dialog.setPatience(1)
         this.setHint()
       })
@@ -687,6 +830,12 @@ export class Game {
       return
     }
     const drink = DRINKS[c.spec.order]
+    if (!this.inventory.take(drink.id)) {
+      toast(`Hết ${drink.name}! Nhấn R đặt hàng, thùng tới thì vác ra châm vào bình.`, 'bad', 3)
+      sfx.bad()
+      return
+    }
+    this.syncStock()
     const price = Math.round(drink.price * this.economy.priceMod)
     this.economy.earn(price)
     this.economy.stats.served += 1
@@ -909,6 +1058,15 @@ export class Game {
       return
     }
 
+    // Menu đặt hàng: 1–8 chọn món, R / Q đóng
+    if (this.orderOpen) {
+      for (let i = 0; i < DRINK_IDS.length; i++) {
+        if (inp.wasPressed(`Digit${i + 1}`)) this.orderDrink(DRINK_IDS[i])
+      }
+      if (inp.wasPressed('KeyR') || inp.wasPressed('KeyQ') || inp.wasPressed('Escape')) this.closeOrderMenu()
+      return
+    }
+
     if (this.request.visible) {
       if (inp.wasPressed('Digit1')) this.doRequest('turn')
       else if (inp.wasPressed('Digit2')) this.doRequest('slogan')
@@ -917,10 +1075,28 @@ export class Game {
       return
     }
 
+    if (inp.wasPressed('KeyR')) {
+      this.openOrderMenu()
+      return
+    }
     if (inp.wasPressed('Digit1')) this.setTool('hands')
-    if (inp.wasPressed('Digit2')) this.setTool('gun')
+    if (inp.wasPressed('Digit2')) {
+      if (this.carry) toast('Đang vác thùng, bỏ thùng vào bình trước đã.', 'info', 1.6)
+      else this.setTool('gun')
+    }
     if (inp.wasPressed('KeyQ')) this.openRequest()
-    if (inp.wasPressed('KeyE')) this.serve()
+
+    // E: nhặt thùng đang nhìn, châm bình (giữ), hoặc phục vụ khách
+    const f = this.focus
+    if (inp.wasPressed('KeyE')) {
+      if (f?.kind === 'crate' && !this.carry) this.pickCrate(f.id)
+      else if (f?.kind === 'crate' && this.carry) toast('Đang vác một thùng rồi.', 'info', 1.4)
+      else if (f?.kind === 'dispenser' && this.carry && this.carry !== f.id) {
+        toast(`Sai bình: thùng đang vác là ${DRINKS[this.carry].name}.`, 'bad', 1.8)
+      } else if (!(f?.kind === 'dispenser' && this.carry === f.id)) this.serve()
+    }
+    this.updateFilling()
+
     // Chuột trái, hoặc Space cho trackpad Mac
     if ((inp.mousePressed[0] || inp.wasPressed('Space')) && this.player.tool === 'gun') this.shoot()
     this.hud.setZoom(this.player.isZooming)
@@ -950,19 +1126,53 @@ export class Game {
   }
 
   private setHint(): void {
-    if (this.cutscene) return
+    if (this.cutscene || this.lineup) return
+    this.hud.setHint(this.baseHint())
+  }
+
+  /** Gợi ý theo trạng thái khách, kèm đơn hàng đang tới */
+  private baseHint(): string {
     const c = this.current
+    let text: string
     if (c && (c.state === 'waiting' || c.state === 'turning')) {
-      this.hud.setHint(
-        '<b>E</b> phục vụ · <b>Q</b> yêu cầu · <b>Chuột phải</b> soi · <b>2</b> súng · <b>Tab</b> sổ tay',
-      )
+      text = '<b>E</b> phục vụ · <b>Q</b> yêu cầu · <b>Chuột phải</b> soi · <b>2</b> súng · <b>R</b> đặt hàng · <b>Tab</b> sổ tay'
     } else if (c && c.state === 'drinking') {
-      this.hud.setHint('Khách đang uống... · <b>Tab</b> sổ tay')
+      text = 'Khách đang uống... · <b>Tab</b> sổ tay'
     } else if (c) {
-      this.hud.setHint('Khách đang vào... · <b>Tab</b> sổ tay')
-    } else if (!this.lineup) {
-      this.hud.setHint('Đang chờ khách · <b>Tab</b> sổ tay')
+      text = 'Khách đang vào... · <b>Tab</b> sổ tay'
+    } else {
+      text = 'Đang chờ khách · <b>R</b> đặt hàng · <b>Tab</b> sổ tay'
     }
+    const next = this.inventory.nextArrival
+    if (next) text += ` · hàng ${DRINKS[next.id].name} tới sau ${Math.ceil(next.left)}s`
+    return text
+  }
+
+  /** Mỗi khung: gợi ý theo vật đang nhìn và thùng đang vác, nếu không thì gợi ý nền */
+  private updateHint(): void {
+    if (this.cutscene || this.lineup || this.orderOpen || this.request.visible || this.journal.visible) return
+    const f = this.focus
+    const carryName = this.carry ? DRINKS[this.carry].name : ''
+    if (f?.kind === 'crate') {
+      this.hud.setHint(
+        this.carry ? `Đang vác thùng ${carryName}` : `<b>E</b> nhặt thùng ${DRINKS[f.id].name} (${CRATE_SERVINGS} ly)`,
+      )
+      return
+    }
+    if (f?.kind === 'dispenser') {
+      const stock = this.inventory.stock[f.id]
+      let tail = ''
+      if (this.carry === f.id) tail = this.fill > 0 ? ` · đang châm ${Math.round(this.fill * 100)}%` : ' · giữ <b>E</b> để châm'
+      else if (this.carry) tail = ` · thùng đang vác là ${carryName}`
+      else if (stock <= 0) tail = ' · hết, <b>R</b> đặt hàng'
+      this.hud.setHint(`${DRINKS[f.id].name}: ${stock}/${MAX_STOCK}${tail}`)
+      return
+    }
+    if (this.carry) {
+      this.hud.setHint(`Đang vác thùng ${carryName} · quay lại nhìn bình ${carryName} rồi giữ <b>E</b>`)
+      return
+    }
+    this.hud.setHint(this.baseHint())
   }
 
   private refreshHud(): void {

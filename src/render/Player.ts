@@ -20,6 +20,9 @@ export class Player {
   private readonly viewmodel = new THREE.Group()
   private readonly handsGroup = new THREE.Group()
   private readonly gunGroup = new THREE.Group()
+  private readonly carryGroup = new THREE.Group()
+  private carryBand: THREE.Mesh | null = null
+  carrying = false
   private readonly muzzle = new THREE.Object3D()
   private flash: THREE.Sprite | null = null
   private flashLeft = 0
@@ -67,6 +70,16 @@ export class Player {
       this.handsGroup.add(hand)
     }
     this.viewmodel.add(this.handsGroup)
+
+    // Thùng hàng đang vác: hộp gỗ với dải màu món, nằm giữa hai tay
+    this.carryGroup.position.set(0, -0.3, -0.58)
+    this.carryGroup.rotation.x = 0.15
+    this.carryGroup.add(new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.26, 0.28), mat(0x9c7a52)))
+    this.carryBand = new THREE.Mesh(new THREE.BoxGeometry(0.41, 0.07, 0.29), mat(0xe63946))
+    this.carryBand.position.y = 0.02
+    this.carryGroup.add(this.carryBand)
+    this.carryGroup.visible = false
+    this.viewmodel.add(this.carryGroup)
 
     const metal = mat(0x2a2a2a, { flat: false })
     const wood = mat(0x6b3f1d)
@@ -130,6 +143,13 @@ export class Player {
     this.tool = tool
     this.handsGroup.visible = tool === 'hands'
     this.gunGroup.visible = tool === 'gun'
+  }
+
+  /** Vác (màu dải theo món) hoặc bỏ thùng hàng */
+  setCarry(color: number | null): void {
+    this.carrying = color !== null
+    this.carryGroup.visible = this.carrying
+    if (color !== null && this.carryBand) this.carryBand.material = mat(color)
   }
 
   get isZooming(): boolean {

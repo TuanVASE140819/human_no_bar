@@ -187,6 +187,7 @@ export function introLines(): string[] {
     'Luật rất ngắn: thấy người thì bắn. Mỗi tên anh hạ, thành phố thưởng 60 đô và uy tín của anh tăng.',
     'Nhưng bắn nhầm thú thật thì anh đền 150 đô, mất uy tín, khách bỏ chạy. Nhầm vài lần là quán sập.',
     'Cách soi: tai lệch, khóa kéo sau lưng, tay năm ngón, giày dưới chân, mắt nhựa không chớp. Hỏi khẩu hiệu, hỏi câu hỏi loài. Chúng thuộc bài rất kém.',
+    'Và quán vẫn là quán: bình nào sau lưng anh cạn thì bấm R gọi hàng, thùng tới thì vác ra châm. Khách không đợi mãi đâu.',
     'Có một kẻ đang may costume cho chúng. Trong hồ sơ hắn tên là Thợ May. Tìm được hắn, anh giàu. Tôi sẽ ghé lại mỗi sáng.',
   ]
 }

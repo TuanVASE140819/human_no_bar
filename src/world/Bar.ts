@@ -1,9 +1,26 @@
 import * as THREE from 'three'
-import { mat, texMat, glowMat, box, placed, canvasTexture, NO_OUTLINE_LAYER } from '@/render/materials'
+import { mat, texMat, glowMat, box, placed, canvasTexture, disposeTree, NO_OUTLINE_LAYER } from '@/render/materials'
 import type { LampSpec } from '@/render/Lighting'
-import { DRINKS } from '@/data/drinks'
+import { DRINKS, DRINK_IDS, type DrinkId } from '@/data/drinks'
 import { tweens, Easing } from '@/core/Tween'
 import { rand, pick } from '@/core/rand'
+
+/** Bình rót một món trên quầy sau: mức nước hiện tồn kho */
+export interface Dispenser {
+  id: DrinkId
+  group: THREE.Group
+  /** Lưới kính dùng để raycast; userData.drink = id */
+  glass: THREE.Mesh
+  liquid: THREE.Mesh
+  level: number
+  target: number
+}
+
+/** Thùng hàng được giao tới góc quầy sau; userData.crate = id trên mọi lưới con */
+export interface CrateProp {
+  id: DrinkId
+  group: THREE.Group
+}
 
 export interface BarWorld {
   group: THREE.Group
@@ -15,6 +32,17 @@ export interface BarWorld {
   counterSpot: THREE.Vector3
   doorSpot: THREE.Vector3
   spawnSpot: THREE.Vector3
+  dispensers: Dispenser[]
+  crates: CrateProp[]
+  /** Đặt mức nước mục tiêu (0..1) cho bình; mức hiện tại trượt tới dần trong update */
+  setLevel(id: DrinkId, level: number): void
+  /** Gạch món hết hàng trên bảng menu */
+  setSoldOut(ids: Set<DrinkId>): void
+  spawnCrate(id: DrinkId): CrateProp
+  removeCrate(crate: CrateProp): void
+  /** Các vật thể người chơi tương tác được (bình, thùng) để raycast */
+  interactables(): THREE.Object3D[]
+  update(dt: number): void
 }
 
 const W = 12
@@ -118,7 +146,23 @@ function posterTexture(): THREE.CanvasTexture {
   })
 }
 
-function menuTexture(): THREE.CanvasTexture {
+/** Nhãn nhỏ ghi tên món cho bình rót và thùng hàng */
+function labelTexture(text: string): THREE.CanvasTexture {
+  return canvasTexture(256, 96, (ctx, w, h) => {
+    ctx.fillStyle = '#f7f1e1'
+    ctx.fillRect(0, 0, w, h)
+    ctx.strokeStyle = '#5a3a1e'
+    ctx.lineWidth = 8
+    ctx.strokeRect(4, 4, w - 8, h - 8)
+    ctx.fillStyle = '#3a2618'
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    ctx.font = 'bold 38px "Baloo 2", "Segoe UI", sans-serif'
+    ctx.fillText(text, w / 2, h / 2 + 2)
+  })
+}
+
+function menuTexture(soldOut: Set<DrinkId> = new Set()): THREE.CanvasTexture {
   return canvasTexture(768, 432, (ctx, w, h) => {
     ctx.fillStyle = '#233524'
     ctx.fillRect(0, 0, w, h)
@@ -143,12 +187,26 @@ function menuTexture(): THREE.CanvasTexture {
       const row = i % 4
       const x = 50 + col * 360
       const y = 140 + row * 62
-      ctx.fillStyle = '#f7f1e1'
+      const out = soldOut.has(d.id)
+      ctx.fillStyle = out ? 'rgba(247,241,225,0.45)' : '#f7f1e1'
       ctx.fillText(d.name, x, y)
-      ctx.fillStyle = '#ffd27f'
+      ctx.fillStyle = out ? 'rgba(255,210,127,0.45)' : '#ffd27f'
       ctx.textAlign = 'right'
       ctx.fillText(`$${d.price}`, x + 300, y)
       ctx.textAlign = 'left'
+      if (out) {
+        // Gạch ngang và nhãn HẾT
+        ctx.strokeStyle = '#e63946'
+        ctx.lineWidth = 5
+        ctx.beginPath()
+        ctx.moveTo(x - 6, y - 10)
+        ctx.lineTo(x + 306, y - 10)
+        ctx.stroke()
+        ctx.fillStyle = '#e63946'
+        ctx.font = 'bold 22px "Baloo 2", "Segoe UI", sans-serif'
+        ctx.fillText('HẾT', x + 150, y - 24)
+        ctx.font = '30px "Baloo 2", "Segoe UI", sans-serif'
+      }
     })
   })
 }
@@ -484,7 +542,6 @@ export function buildBar(scene: THREE.Scene): BarWorld {
     group.add(placed(new THREE.CylinderGeometry(0.05, 0.04, 0.14, 12), glassCup, -1.4 + c * 0.18, 1.2, 2.05))
   }
   const chrome = mat(0xc9ccd1, SMOOTH)
-  group.add(placed(new THREE.CylinderGeometry(0.05, 0.06, 0.24, 12), chrome, 1.6, 1.05, 3.7))
   const tap = placed(new THREE.CylinderGeometry(0.035, 0.045, 0.3, 10), chrome, 2.0, 1.28, 2.0)
   group.add(tap)
   const spout = placed(new THREE.CylinderGeometry(0.018, 0.018, 0.16, 8), chrome, 2.0, 1.36, 1.92)
@@ -516,11 +573,81 @@ export function buildBar(scene: THREE.Scene): BarWorld {
     }
   }
 
+  // ---------- Bình rót 8 món trên quầy sau (mức nước = tồn kho) ----------
+  const dispensers: Dispenser[] = []
+  const tankGlass = mat(0xcfe6f5, { transparent: true, opacity: 0.28, flat: false })
+  const tankBase = mat(0x2a2a2a, SMOOTH)
+  DRINK_IDS.forEach((id, i) => {
+    const d = DRINKS[id]
+    const g = new THREE.Group()
+    g.position.set(-1.6 + i * 0.6, 0.95, 3.68)
+    g.add(placed(new THREE.CylinderGeometry(0.11, 0.12, 0.05, 16), tankBase, 0, 0.025, 0))
+    const liquidGeo = new THREE.CylinderGeometry(0.08, 0.08, 1, 16)
+    liquidGeo.translate(0, 0.5, 0)
+    const liquid = placed(liquidGeo, mat(d.color, SMOOTH), 0, 0.05, 0)
+    liquid.scale.y = 0.38 * 0.4
+    liquid.castShadow = false
+    g.add(liquid)
+    const glass = placed(new THREE.CylinderGeometry(0.09, 0.09, 0.4, 16), tankGlass, 0, 0.25, 0)
+    glass.castShadow = false
+    glass.userData.drink = id
+    g.add(glass)
+    g.add(placed(new THREE.CylinderGeometry(0.1, 0.1, 0.03, 16), tankBase, 0, 0.465, 0))
+    const spigot = placed(new THREE.CylinderGeometry(0.012, 0.012, 0.1, 8), chrome, 0, 0.12, -0.12)
+    spigot.rotation.x = Math.PI / 2
+    g.add(spigot)
+    const lbl = new THREE.Mesh(new THREE.PlaneGeometry(0.22, 0.082), texMat(labelTexture(d.name)))
+    lbl.position.set(0, 0.56, -0.08)
+    lbl.rotation.y = Math.PI
+    g.add(lbl)
+    group.add(g)
+    dispensers.push({ id, group: g, glass, liquid, level: 0.4, target: 0.4 })
+  })
+
+  // ---------- Thùng hàng giao xuống sàn cạnh cửa kho, bên phải chỗ đứng ----------
+  const crates: CrateProp[] = []
+  const crateSpot = new THREE.Vector3(3.2, 0, 3.1)
+  const restack = () => crates.forEach((c, i) => c.group.position.set(crateSpot.x, crateSpot.y + 0.15 + i * 0.31, crateSpot.z))
+  const spawnCrate = (id: DrinkId): CrateProp => {
+    const d = DRINKS[id]
+    const g = new THREE.Group()
+    g.add(box(0.38, 0.3, 0.32, mat(0x9c7a52), 0, 0, 0))
+    g.add(box(0.39, 0.07, 0.33, mat(d.color), 0, 0.02, 0))
+    const labelMat = texMat(labelTexture(d.name))
+    const lbl = new THREE.Mesh(new THREE.PlaneGeometry(0.26, 0.1), labelMat)
+    lbl.position.set(0, -0.07, -0.165)
+    lbl.rotation.y = Math.PI
+    g.add(lbl)
+    // Nhãn trên nắp để nhìn từ bên cạnh hoặc từ trên xuống vẫn đọc được
+    const top = new THREE.Mesh(new THREE.PlaneGeometry(0.3, 0.115), labelMat)
+    top.position.set(0, 0.152, 0)
+    top.rotation.x = -Math.PI / 2
+    g.add(top)
+    g.traverse((o) => {
+      o.userData.crate = id
+    })
+    group.add(g)
+    const crate = { id, group: g }
+    crates.push(crate)
+    restack()
+    return crate
+  }
+  const removeCrate = (crate: CrateProp) => {
+    const i = crates.indexOf(crate)
+    if (i < 0) return
+    crates.splice(i, 1)
+    group.remove(crate.group)
+    disposeTree(crate.group)
+    restack()
+  }
+
   // ---------- Bảng menu, poster, đồng hồ, tranh ----------
-  const menu = new THREE.Mesh(new THREE.PlaneGeometry(1.9, 1.07), texMat(menuTexture()))
+  const menuMat = texMat(menuTexture())
+  const menu = new THREE.Mesh(new THREE.PlaneGeometry(1.9, 1.07), menuMat)
   menu.position.set(-3.6, 2.7, D / 2 - 0.045)
   menu.rotation.y = Math.PI
   group.add(menu)
+  let soldOutKey = ''
   group.add(box(2.0, 1.17, 0.04, woodM, -3.6, 2.7, D / 2 - 0.01))
 
   const poster = new THREE.Mesh(new THREE.PlaneGeometry(0.9, 1.2), texMat(posterTexture()))
@@ -661,5 +788,29 @@ export function buildBar(scene: THREE.Scene): BarWorld {
     counterSpot: new THREE.Vector3(0.5, 0, 0.55),
     doorSpot: new THREE.Vector3(0, 0, -3.6),
     spawnSpot: new THREE.Vector3(0, 0, -5.2),
+    dispensers,
+    crates,
+    setLevel: (id, level) => {
+      const d = dispensers.find((x) => x.id === id)
+      if (d) d.target = THREE.MathUtils.clamp(level, 0, 1)
+    },
+    setSoldOut: (ids) => {
+      const key = [...ids].sort().join(',')
+      if (key === soldOutKey) return
+      soldOutKey = key
+      menuMat.map?.dispose()
+      menuMat.map = menuTexture(ids)
+      menuMat.needsUpdate = true
+    },
+    spawnCrate,
+    removeCrate,
+    interactables: () => [...dispensers.map((d) => d.glass), ...crates.map((c) => c.group)],
+    update: (dt) => {
+      for (const d of dispensers) {
+        if (Math.abs(d.level - d.target) < 0.001) continue
+        d.level = THREE.MathUtils.damp(d.level, d.target, 6, dt)
+        d.liquid.scale.y = Math.max(0.01, 0.38 * d.level)
+      }
+    },
   }
 }

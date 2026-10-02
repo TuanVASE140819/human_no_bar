@@ -7,10 +7,12 @@ export interface DayStats {
   earned: number
   bounties: number
   penalties: number
+  /** Tiền nhập hàng trong ngày */
+  supplies: number
 }
 
 function freshStats(): DayStats {
-  return { served: 0, caught: 0, misfires: 0, slipped: 0, walkedOut: 0, earned: 0, bounties: 0, penalties: 0 }
+  return { served: 0, caught: 0, misfires: 0, slipped: 0, walkedOut: 0, earned: 0, bounties: 0, penalties: 0, supplies: 0 }
 }
 
 export const BOUNTY = 60
@@ -51,6 +53,15 @@ export class Economy {
     this.money -= amount
     this.stats.penalties += amount
     this.emit()
+  }
+
+  /** Chi tiền nhập hàng; trả về false nếu không đủ tiền */
+  spend(amount: number): boolean {
+    if (this.money < amount) return false
+    this.money -= amount
+    this.stats.supplies += amount
+    this.emit()
+    return true
   }
 
   addRep(delta: number): void {

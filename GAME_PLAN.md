@@ -124,6 +124,10 @@ Quy tắc: sai một bước thì món thành "hỏng", khách vẫn nhận như
 
 Người giả có 60% xác suất gọi sai "món đặc trưng" của loài đang giả. Đây là manh mối rẻ nhất nhưng không đủ để bắn một mình.
 
+### 2.3b Tồn kho đồ uống (đã làm 02/10/2026, theo yêu cầu "hết nước thì đặt hàng rồi châm")
+
+Tám bình rót trên quầy sau, mỗi bình tối đa 8 ly, bắt đầu 3 ly, không tự nạp lại qua đêm. Mức nước trong bình là tồn kho thật; bảng menu gạch đỏ món đã hết. Khách gọi món hết hàng đứng đợi và kiên nhẫn vẫn trôi; bấm E phục vụ thì báo hết. Phím **R** mở menu đặt hàng (thùng 6 ly, giá 2,5 lần giá ly, giao sau 20 giây thật), thùng xuất hiện dưới sàn cạnh cửa kho; nhìn thùng bấm **E** để vác (không rút súng được khi đang vác), nhìn đúng bình và **giữ E** 2 giây để châm (có tiếng rót, mức nước dâng). Chi phí nhập hàng hiện ở tổng kết ngày. Mã: `src/systems/Inventory.ts`, phần tương tác trong `Game.ts` (updateFocus / updateFilling / openOrderMenu), bình và thùng trong `Bar.ts`.
+
 ### 2.4 Quản lý quán
 
 | Chỉ số  | Khoảng             | Tác động                                                   |

@@ -13,6 +13,10 @@ Cách chơi: bấm **Bắt đầu ca làm** rồi **Mở cửa**, trình duyệt
 **Q** yêu cầu khách (quay người, đọc khẩu hiệu, trả lời câu hỏi), **chuột phải** giữ để soi, **Tab** mở sổ tay so hồ sơ loài,
 **E** phục vụ nếu là thú thật, **2** rút súng và **chuột trái** bắn nếu chắc đó là người. Bắn nhầm thú thật mất tiền và uy tín.
 
+Tồn kho: tám bình rót trên quầy sau cho thấy còn bao nhiêu ly mỗi món; không tự đầy lại qua đêm. Hết món thì khách đứng
+đợi: bấm **R** đặt thùng hàng (mất tiền, khoảng 20 giây sau thùng được giao xuống sàn cạnh cửa kho), nhìn vào thùng bấm
+**E** để vác, quay lại nhìn đúng bình và **giữ E** để châm. Bảng menu gạch món đã hết.
+
 Công nghệ: Vite + TypeScript + Three.js, đồ họa toon có viền, nhân vật dựng và rig bằng Blender (script Python).
 
 ## Chạy

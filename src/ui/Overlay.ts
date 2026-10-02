@@ -54,6 +54,7 @@ export class Overlay {
         <div><span class="key">1 / 2</span> tay không / súng</div>
         <div><span class="key">Chuột trái</span> / <span class="key">Space</span> bắn</div>
         <div><span class="key">Tab</span> sổ tay</div>
+        <div><span class="key">R</span> đặt hàng khi bình cạn</div>
         <div><span class="key">M</span> tắt / bật âm thanh</div>
       </div>
       <div class="row">
@@ -90,7 +91,7 @@ export class Overlay {
     isLast: boolean,
     onNext: () => void,
   ): void {
-    const net = stats.earned + stats.bounties - stats.penalties
+    const net = stats.earned + stats.bounties - stats.penalties - stats.supplies
     this.open(`
       <p class="kicker">Đóng cửa</p>
       <h2>Tổng kết ngày ${day}</h2>
@@ -103,6 +104,7 @@ export class Overlay {
         <tr class="sep"><td>Doanh thu đồ uống</td><td>+$${Math.round(stats.earned)}</td></tr>
         <tr><td>Tiền thưởng bắt người</td><td>+$${stats.bounties}</td></tr>
         <tr><td>Tiền phạt, bồi thường</td><td class="${stats.penalties ? 'bad' : ''}">−$${stats.penalties}</td></tr>
+        <tr><td>Nhập hàng</td><td class="${stats.supplies ? 'bad' : ''}">−$${stats.supplies}</td></tr>
         <tr class="total"><td>Lãi ròng trong ngày</td><td class="${net >= 0 ? 'good' : 'bad'}">${net >= 0 ? '+' : '−'}$${Math.abs(Math.round(net))}</td></tr>
         <tr><td>Tiền hiện có</td><td class="${money < 0 ? 'bad' : ''}">$${Math.round(money)}</td></tr>
         <tr><td>Uy tín</td><td>${reputation}</td></tr>
