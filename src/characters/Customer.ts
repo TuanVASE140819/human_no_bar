@@ -20,9 +20,13 @@ export class Customer {
   /** Đã nói câu phản ứng khi thấy súng chưa */
   reactedToGun = false
   mood: Mood = 'neutral'
+  /** Độ cao sàn nơi nhân vật đứng (bục nhạc cao hơn sàn quán) */
+  baseY = 0
 
   private target: THREE.Vector3 | null = null
   private stepPhase = 0
+  private bobLeft = 0
+  private bobT = 0
   private onArrive: (() => void) | null = null
   private readonly speed = 1.7
   private walkT = 0
@@ -85,6 +89,12 @@ export class Customer {
     this.rig.setMood(mood)
   }
 
+  /** Gật đầu theo nhạc trong `seconds` giây (nhạc công) */
+  perform(seconds: number): void {
+    this.bobLeft = Math.max(0.25, seconds)
+    this.bobT = 0
+  }
+
   /** Nhận ly, nâng lên uống rồi gọi done (thường là rời quán). */
   drink(color: number, done: () => void): void {
     if (this.state !== 'waiting') return
@@ -135,7 +145,7 @@ export class Customer {
         const step = Math.min(dist, this.speed * dt)
         root.position.addScaledVector(d.normalize(), step)
         this.walkT += dt * 9
-        root.position.y = Math.abs(Math.sin(this.walkT)) * 0.05
+        root.position.y = this.baseY + Math.abs(Math.sin(this.walkT)) * 0.05
         this.rig.body.rotation.z = Math.sin(this.walkT) * 0.05
         moving = true
         // Tiếng bước chân mỗi nửa chu kỳ, nhỏ dần theo khoảng cách tới người chơi
@@ -147,20 +157,26 @@ export class Customer {
         }
       }
     } else {
-      root.position.y *= 0.8
+      root.position.y = this.baseY + (root.position.y - this.baseY) * 0.8
       this.rig.body.rotation.z *= 0.8
     }
 
     // Đầu hướng về người chơi khi đang vào hoặc đứng chờ ở quầy
     let yaw = 0
     let pitch = 0
+    if (this.bobLeft > 0) {
+      // Nhạc công gật đầu theo nốt
+      this.bobLeft -= dt
+      this.bobT += dt
+      pitch += Math.sin(this.bobT * 9) * 0.1 * Math.min(1, this.bobLeft * 3)
+    }
     if (this.lookTarget && (this.state === 'waiting' || this.state === 'entering')) {
       const local = root.worldToLocal(this.lookTarget.clone())
       const dx = local.x
       const dy = local.y - 1.84 * this.rig.baseScale
       const dz = local.z
       yaw = THREE.MathUtils.clamp(Math.atan2(dx, dz), -0.7, 0.7)
-      pitch = THREE.MathUtils.clamp(-Math.atan2(dy, Math.hypot(dx, dz)), -0.4, 0.35)
+      pitch += THREE.MathUtils.clamp(-Math.atan2(dy, Math.hypot(dx, dz)), -0.4, 0.35)
     }
     this.lookYaw = THREE.MathUtils.damp(this.lookYaw, yaw, 6, dt)
     this.lookPitch = THREE.MathUtils.damp(this.lookPitch, pitch, 6, dt)

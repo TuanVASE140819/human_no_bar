@@ -329,7 +329,9 @@ Dựng modular: tường, sàn, đồ nội thất từ khối hoặc từ gói 
 - Mỗi loài một tiếng kêu ngắn, vừa tạo cá tính vừa là manh mối (người giả bắt chước lệch tông).
 - Nguồn: freesound và Kenney Audio, giấy phép CC0.
 
-> **Đã làm 02/10/2026 (không cần file):** `src/core/Audio.ts` tổng hợp mọi âm thanh bằng WebAudio: súng, chuông và kẹt cửa, bước chân theo khoảng cách, ly chạm, tiền, chữ chạy, tiếng ngã, và nhạc nền lo-fi jazz tự sinh (vòng hợp âm Dm9 G13 Cmaj9 Am9 ở 84 BPM, trống swing, giai điệu thưa, rè đĩa than). Phím M tắt / bật, lưu trong localStorage. Tiếng kêu từng loài và âm thanh đêm còn chờ M3 / M5.
+> **Đã làm 02/10/2026 (không cần file):** `src/core/Audio.ts` tổng hợp mọi hiệu ứng bằng WebAudio: súng, chuông và kẹt cửa, bước chân theo khoảng cách, ly chạm, tiền, chữ chạy, tiếng ngã, rót nước, gõ cửa kho. Phím M tắt / bật, lưu trong localStorage. Tiếng kêu từng loài và âm thanh đêm còn chờ M3 / M5.
+>
+> **Nhạc sống (cùng ngày):** nhân vật **Vịt Sax** (model Blender thứ 9: mỏ dẹt, chân màng, không tai, kính đen, nơ) đứng trên bục góc trái trước, ôm kèn saxophone dựng bằng code (`src/characters/props.ts`), gật đầu theo nhịp, loa kèn nhịp theo nốt. Nguồn nhạc theo thứ tự: (1) video YouTube nhúng chính thức `JUKEBOX.videoId` trong `src/data/music.ts` (Phép Màu, Tuấn Kiệt Saxophone cover) hiện ở góc trái dưới dạng TV của quán, bắt đầu khi bấm Mở cửa, tắt tiếng đồng bộ với phím M; (2) file riêng `public/audio/ballad.mp3|ogg|wav` nếu có (dò nhịp bằng AnalyserNode); (3) bản ballad tổng hợp "Đêm Không Người" (`BALLAD` trong `music.ts`, saxophone tổng hợp bằng hai răng cưa + lowpass + formant + vibrato, pad, contrabass, chổi trống). Không tải nhạc có bản quyền về repo.
 
 ---
 

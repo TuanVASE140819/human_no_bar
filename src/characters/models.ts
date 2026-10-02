@@ -15,8 +15,8 @@ export interface ModelInstance {
 
 const models = new Map<SpeciesId, ModelEntry>()
 
-/** Khách 6 loài + lửng (đặc vụ) + chồn (Thợ May) */
-const MODEL_IDS: SpeciesId[] = [...SPECIES_IDS, 'badger', 'stoat']
+/** Khách 6 loài + lửng (đặc vụ) + chồn (Thợ May) + vịt (nhạc công) */
+const MODEL_IDS: SpeciesId[] = [...SPECIES_IDS, 'badger', 'stoat', 'duck']
 
 /** Tải model glTF do Blender xuất (public/models/<loài>.glb). Loài nào thiếu sẽ dùng nhân vật procedural. */
 export async function loadCharacterModels(base = `${import.meta.env.BASE_URL}models/`): Promise<number> {

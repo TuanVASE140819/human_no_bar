@@ -2,7 +2,11 @@
 
 **Chơi ngay:** https://tuanvase140819.github.io/human_no_bar/ (Chrome, Edge, Firefox hoặc Safari 15+ trên máy tính)
 
-Âm thanh tổng hợp bằng WebAudio (không có file nhạc), bấm **M** để tắt hoặc bật.
+Âm thanh hiệu ứng tổng hợp bằng WebAudio, bấm **M** để tắt hoặc bật. Nhạc trong quán: **Vịt Sax** trên bục góc trái thổi
+saxophone; bản nhạc là video YouTube *"Phép Màu (Đàn Cá Gỗ OST) · Saxophone cover"* của kênh **Tuấn Kiệt Saxophone**,
+phát qua trình phát nhúng chính thức (hiện ở góc trái dưới dạng TV của quán, không tải file về). Mất mạng hoặc video bị
+chặn nhúng thì vịt chơi bản ballad tổng hợp "Đêm Không Người" (hoặc file riêng trong `public/audio/`, xem README ở đó).
+Thêm `?nojukebox` để tắt YouTube.
 Trên **macOS**: chuột phải = chạm hai ngón trên trackpad hoặc Ctrl + click; có thể giữ **Shift** để soi và bấm **Space** để bắn.
 Màn Retina tự hạ độ phân giải khi khung hình thấp (thêm `?hd` để giữ nguyên). Nút **Toàn màn hình** có ở menu chính và menu tạm dừng.
 

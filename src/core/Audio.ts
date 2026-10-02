@@ -4,6 +4,8 @@
  * AudioContext chỉ được tạo sau một cử chỉ của người dùng (unlock), nên không có cảnh báo của trình duyệt.
  */
 
+import { BALLAD, VOICINGS } from '@/data/music'
+
 const STORAGE_KEY = 'nhb.muted'
 
 type OscType = OscillatorType
@@ -23,20 +25,21 @@ interface BurstOpts {
   at?: number
 }
 
-// Hợp âm lo-fi (MIDI): bass + voicing pad không gốc, 1 ô nhịp mỗi hợp âm
-const CHORDS = [
-  { bass: 38, notes: [57, 60, 64, 65] }, // Dm9
-  { bass: 43, notes: [59, 64, 65, 69] }, // G13
-  { bass: 36, notes: [55, 59, 62, 64] }, // Cmaj9
-  { bass: 45, notes: [55, 59, 60, 64] }, // Am9
-]
-
 function midi(n: number): number {
   return 440 * Math.pow(2, (n - 69) / 12)
 }
 
+interface MelodyEvent {
+  /** Phách bắt đầu trong vòng lặp */
+  start: number
+  midi: number
+  beats: number
+}
+
 class AudioSystem {
   muted = false
+  /** Gọi đúng lúc một nốt saxophone vang lên (để nhạc công cử động theo) */
+  onNote: ((midi: number, seconds: number) => void) | null = null
 
   private ctx: AudioContext | null = null
   private master: GainNode | null = null
@@ -46,6 +49,15 @@ class AudioSystem {
   private musicTimer: number | null = null
   private nextBeat = 0
   private beat = 0
+  private readonly melody: MelodyEvent[] = []
+  private readonly loopBeats: number
+
+  /** File nhạc riêng (nếu có): dữ liệu thô, buffer đã giải mã, nguồn đang phát, bộ đo mức */
+  private trackData: ArrayBuffer | null = null
+  private track: AudioBuffer | null = null
+  private trackSource: AudioBufferSourceNode | null = null
+  private analyser: AnalyserNode | null = null
+  private levelBuf: Uint8Array<ArrayBuffer> | null = null
 
   constructor() {
     try {
@@ -53,6 +65,12 @@ class AudioSystem {
     } catch {
       /* bộ nhớ trình duyệt bị chặn */
     }
+    let start = 0
+    for (const [m, beats] of BALLAD.melody) {
+      this.melody.push({ start, midi: m, beats })
+      start += beats
+    }
+    this.loopBeats = BALLAD.chords.length * 2
   }
 
   /** Gọi trong một click hoặc phím bấm: tạo và mở AudioContext. Gọi nhiều lần không sao. */
@@ -172,12 +190,44 @@ class AudioSystem {
     }
   }
 
-  // ---------- Nhạc nền ----------
+  // ---------- Nhạc sống: file riêng (nếu có) hoặc Vịt Sax chơi bản ballad tổng hợp ----------
+
+  /**
+   * Thử tải file nhạc riêng: lần lượt các đường dẫn đưa vào (public/audio/ballad.mp3 / .ogg / .wav).
+   * Chỉ dùng bản thu bạn có quyền sử dụng. Không có file thì game dùng bản ballad tổng hợp.
+   * Trả về đường dẫn đã nhận, hoặc null.
+   */
+  async preloadTrack(urls: string[]): Promise<string | null> {
+    for (const url of urls) {
+      try {
+        const res = await fetch(url)
+        if (!res.ok || res.status === 204) continue
+        const type = res.headers.get('content-type') ?? ''
+        if (/text\/html/i.test(type)) continue
+        const data = await res.arrayBuffer()
+        if (data.byteLength < 1024) continue
+        this.trackData = data
+        return url
+      } catch {
+        /* thử đường dẫn tiếp theo */
+      }
+    }
+    return null
+  }
+
+  /** Đang phát file nhạc riêng (thay vì bản tổng hợp) */
+  get usingTrack(): boolean {
+    return this.trackSource !== null
+  }
 
   startMusic(): void {
-    if (!this.ctx || this.musicTimer !== null) return
+    if (!this.ctx || this.musicTimer !== null || this.trackSource) return
+    if (this.trackData) {
+      void this.startTrack()
+      return
+    }
     this.beat = 0
-    this.nextBeat = this.ctx.currentTime + 0.15
+    this.nextBeat = this.ctx.currentTime + 0.2
     this.musicTimer = window.setInterval(() => this.scheduleMusic(), 90)
   }
 
@@ -186,12 +236,60 @@ class AudioSystem {
       window.clearInterval(this.musicTimer)
       this.musicTimer = null
     }
+    if (this.trackSource) {
+      try {
+        this.trackSource.stop()
+      } catch {
+        /* đã dừng */
+      }
+      this.trackSource = null
+      this.analyser = null
+    }
+  }
+
+  private async startTrack(): Promise<void> {
+    const ctx = this.ctx
+    const bus = this.musicBus
+    if (!ctx || !bus || !this.trackData) return
+    if (!this.track) {
+      try {
+        this.track = await ctx.decodeAudioData(this.trackData.slice(0))
+      } catch (err) {
+        console.warn('Không giải mã được file nhạc, dùng bản tổng hợp.', err)
+        this.trackData = null
+        this.startMusic()
+        return
+      }
+    }
+    if (this.trackSource) return
+    const src = ctx.createBufferSource()
+    src.buffer = this.track
+    src.loop = true
+    const analyser = ctx.createAnalyser()
+    analyser.fftSize = 256
+    analyser.smoothingTimeConstant = 0.55
+    src.connect(analyser)
+    analyser.connect(bus)
+    src.start()
+    this.trackSource = src
+    this.analyser = analyser
+    this.levelBuf = new Uint8Array(new ArrayBuffer(analyser.frequencyBinCount))
+  }
+
+  /** Mức âm lượng dải trầm-trung của file nhạc đang phát (0..1); 0 khi không phát file */
+  level(): number {
+    if (!this.analyser || !this.levelBuf || this.muted) return 0
+    this.analyser.getByteFrequencyData(this.levelBuf)
+    const n = Math.min(28, this.levelBuf.length)
+    let sum = 0
+    for (let i = 2; i < n; i++) sum += this.levelBuf[i]
+    return sum / ((n - 2) * 255)
   }
 
   private scheduleMusic(): void {
     if (!this.ctx || this.ctx.state !== 'running') return
-    const beatLen = 60 / 84
-    while (this.nextBeat < this.ctx.currentTime + 0.3) {
+    const beatLen = 60 / BALLAD.bpm
+    while (this.nextBeat < this.ctx.currentTime + 0.35) {
       if (!this.muted) this.playBeat(this.beat, this.nextBeat, beatLen)
       this.beat += 1
       this.nextBeat += beatLen
@@ -201,41 +299,115 @@ class AudioSystem {
   private playBeat(beat: number, t: number, len: number): void {
     const bus = this.musicBus
     if (!bus) return
-    const inBar = beat % 4
-    const chord = CHORDS[Math.floor(beat / 4) % CHORDS.length]
+    const b = beat % this.loopBeats
+    const inBar = b % 4
+    const chord = VOICINGS[BALLAD.chords[Math.floor(b / 2)]] ?? VOICINGS.Am9
 
-    // Pad: mỗi ô nhịp một hợp âm, triangle qua lowpass, vào chậm ra chậm
-    if (inBar === 0) {
+    // Pad đổi mỗi hợp âm (2 phách): triangle qua lowpass, vào chậm ra chậm
+    if (b % 2 === 0) {
       for (const n of chord.notes) {
-        this.tone(midi(n), len * 4 + 0.5, 0.045, {
+        this.tone(midi(n), len * 2 + 0.7, 0.036, {
           type: 'triangle',
-          attack: 0.5,
+          attack: 0.55,
           detune: (Math.random() - 0.5) * 8,
-          filter: { type: 'lowpass', freq: 1100 },
+          filter: { type: 'lowpass', freq: 1000 },
           at: t,
           dest: bus,
         } as ToneOpts & { dest: GainNode })
       }
     }
-    // Bass: phách 1 và 3, phách 4 lên quãng năm
-    if (inBar === 0 || inBar === 2) this.tone(midi(chord.bass), 0.5, 0.3, { type: 'sine', at: t, dest: bus } as ToneOpts & { dest: GainNode })
-    if (inBar === 3) this.tone(midi(chord.bass + 7), 0.3, 0.18, { type: 'sine', at: t + len * 0.5, dest: bus } as ToneOpts & { dest: GainNode })
-    // Trống lo-fi: kick 1 & 3, snare 2 & 4, hi-hat móc đơn có swing
-    if (inBar === 0 || inBar === 2) this.tone(110, 0.14, 0.4, { type: 'sine', freqEnd: 45, at: t, dest: bus } as ToneOpts & { dest: GainNode })
+    // Bass contrabass: phách 1 và 3
+    if (inBar === 0 || inBar === 2) {
+      this.tone(midi(chord.bass), len * 1.6, 0.26, { type: 'sine', attack: 0.02, at: t, dest: bus } as ToneOpts & { dest: GainNode })
+      this.tone(midi(chord.bass), 0.12, 0.06, { type: 'triangle', at: t, dest: bus } as ToneOpts & { dest: GainNode })
+    }
+    // Chổi trống: mỗi phách, đảo phách nhẹ có swing; rim click 2 & 4
+    this.burst(0.03, 0.03, { filter: { type: 'highpass', freq: 8000 }, at: t, dest: bus } as BurstOpts & { dest: GainNode })
+    this.burst(0.025, 0.018, { filter: { type: 'highpass', freq: 8000 }, at: t + len * 0.66, dest: bus } as BurstOpts & { dest: GainNode })
     if (inBar === 1 || inBar === 3) {
-      this.burst(0.09, 0.2, { filter: { type: 'bandpass', freq: 1800, q: 0.8 }, at: t, dest: bus } as BurstOpts & { dest: GainNode })
+      this.burst(0.025, 0.07, { filter: { type: 'bandpass', freq: 2600, q: 1.5 }, at: t, dest: bus } as BurstOpts & { dest: GainNode })
     }
-    this.burst(0.025, 0.07, { filter: { type: 'highpass', freq: 7000 }, at: t, dest: bus } as BurstOpts & { dest: GainNode })
-    this.burst(0.02, 0.045, { filter: { type: 'highpass', freq: 7000 }, at: t + len * 0.66, dest: bus } as BurstOpts & { dest: GainNode })
-    // Giai điệu thưa: ngẫu nhiên một nốt trong hợp âm lên một quãng tám
-    if ((inBar === 1 || inBar === 3) && Math.random() < 0.45) {
-      const n = chord.notes[Math.floor(Math.random() * chord.notes.length)] + 12
-      this.tone(midi(n), 0.6, 0.1, { type: 'triangle', at: t + (Math.random() < 0.5 ? 0 : len * 0.66), filter: { type: 'lowpass', freq: 2400 }, dest: bus } as ToneOpts & { dest: GainNode })
+    // Giai điệu saxophone: các nốt bắt đầu trong phách này
+    for (const ev of this.melody) {
+      if (ev.start < b || ev.start >= b + 1) continue
+      if (ev.midi <= 0) continue
+      const at = t + (ev.start - b) * len
+      const seconds = ev.beats * len * 0.95
+      this.sax(midi(ev.midi), seconds, 0.2, at)
+      this.fireNote(ev.midi, seconds, at)
     }
-    // Tiếng rè đĩa than
-    for (let i = 0; i < 2; i++) {
-      this.burst(0.004, 0.03, { filter: { type: 'highpass', freq: 2500 }, at: t + Math.random() * len, dest: bus } as BurstOpts & { dest: GainNode })
+    // Tiếng rè đĩa than rất nhẹ
+    this.burst(0.004, 0.025, { filter: { type: 'highpass', freq: 2500 }, at: t + Math.random() * len, dest: bus } as BurstOpts & { dest: GainNode })
+  }
+
+  private fireNote(m: number, seconds: number, at: number): void {
+    if (!this.onNote || !this.ctx) return
+    const delay = Math.max(0, (at - this.ctx.currentTime) * 1000)
+    const cb = this.onNote
+    window.setTimeout(() => cb(m, seconds), delay)
+  }
+
+  /**
+   * Saxophone tổng hợp: hai răng cưa lệch nhẹ + thân trầm, rung (vibrato) vào dần,
+   * lowpass mở ra lúc bắt đầu rồi khép lại, formant quanh 1,1 kHz, hơi thở ở đầu nốt.
+   */
+  private sax(freq: number, dur: number, gain: number, at: number): void {
+    const ctx = this.ctx
+    const dest = this.musicBus
+    if (!ctx || !dest) return
+    const t0 = at
+    const o1 = ctx.createOscillator()
+    o1.type = 'sawtooth'
+    o1.frequency.value = freq
+    const o2 = ctx.createOscillator()
+    o2.type = 'sawtooth'
+    o2.frequency.value = freq
+    o2.detune.value = 7
+    const o3 = ctx.createOscillator()
+    o3.type = 'square'
+    o3.frequency.value = freq / 2
+    const lfo = ctx.createOscillator()
+    lfo.type = 'sine'
+    lfo.frequency.value = 5.2
+    const lfoGain = ctx.createGain()
+    lfoGain.gain.setValueAtTime(0, t0)
+    lfoGain.gain.linearRampToValueAtTime(freq * 0.007, t0 + Math.min(0.5, dur * 0.5))
+    lfo.connect(lfoGain)
+    lfoGain.connect(o1.frequency)
+    lfoGain.connect(o2.frequency)
+    const mix = ctx.createGain()
+    const sub = ctx.createGain()
+    sub.gain.value = 0.18
+    o1.connect(mix)
+    o2.connect(mix)
+    o3.connect(sub)
+    sub.connect(mix)
+    const lp = ctx.createBiquadFilter()
+    lp.type = 'lowpass'
+    lp.Q.value = 0.9
+    lp.frequency.setValueAtTime(freq * 1.8, t0)
+    lp.frequency.exponentialRampToValueAtTime(Math.min(7000, freq * 4.5), t0 + 0.12)
+    lp.frequency.exponentialRampToValueAtTime(Math.min(5000, freq * 3), t0 + Math.max(0.2, dur - 0.1))
+    const formant = ctx.createBiquadFilter()
+    formant.type = 'peaking'
+    formant.frequency.value = 1100
+    formant.Q.value = 1.2
+    formant.gain.value = 7
+    const amp = ctx.createGain()
+    const rel = Math.min(0.18, dur * 0.3)
+    amp.gain.setValueAtTime(0.0001, t0)
+    amp.gain.exponentialRampToValueAtTime(gain, t0 + 0.07)
+    amp.gain.setValueAtTime(gain, t0 + Math.max(0.07, dur - rel))
+    amp.gain.exponentialRampToValueAtTime(0.0001, t0 + dur)
+    mix.connect(lp)
+    lp.connect(formant)
+    formant.connect(amp)
+    amp.connect(dest)
+    for (const o of [o1, o2, o3, lfo]) {
+      o.start(t0)
+      o.stop(t0 + dur + 0.05)
     }
+    this.burst(0.12, gain * 0.35, { filter: { type: 'bandpass', freq: 2200, q: 0.7 }, at: t0, dest } as BurstOpts & { dest: GainNode })
   }
 
   // ---------- Khối tạo âm ----------

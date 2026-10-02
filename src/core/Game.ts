@@ -40,6 +40,10 @@ import {
 } from '@/data/story'
 import { sfx } from './Audio'
 import type { Mood } from '@/characters/buildCharacter'
+import { BALLAD, JUKEBOX, MUSICIAN_NAME, duckSpec } from '@/data/music'
+import { buildSax } from '@/characters/props'
+import { Jukebox } from './Jukebox'
+import { $ } from '@/ui/dom'
 import { DayClock } from '@/systems/DayClock'
 import { dayConfig, TOTAL_DAYS } from '@/data/difficulty'
 import { DRINKS, DRINK_IDS, type DrinkId } from '@/data/drinks'
@@ -117,6 +121,14 @@ export class Game {
   /** Màn trưng bày nhân vật: không sinh khách, không đóng cửa */
   private lineup = false
 
+  /** Nhạc công vịt đứng trên bục, thổi saxophone theo nhạc nền */
+  private musician: Customer | null = null
+  private saxBell: THREE.Mesh | null = null
+  private grooveTimer = 0
+  private grooveLevel = 0
+  /** TV của quán: YouTube nhúng (?nojukebox để tắt); lỗi thì lùi về nhạc tổng hợp */
+  private readonly jukebox: Jukebox
+
   /** Cảnh cốt truyện: đồng hồ dừng, không sinh khách, không bắn; ai đang nói là `speaker` */
   private agent: Customer | null = null
   private cutscene = false
@@ -157,15 +169,28 @@ export class Game {
     this.scene.add(this.player.camera)
     this.lighting = new Lighting(this.scene)
     this.effects = new Effects(this.scene)
-    this.bar = buildBar(this.scene)
+    this.jukebox = new Jukebox($('jukebox'), $('jukebox-player'))
+    if (params.has('nojukebox')) this.jukebox.failed = true
+    const useJukebox = this.jukebox.enabled
+    this.bar = buildBar(this.scene, { stageBand: MUSICIAN_NAME, stageTitle: useJukebox ? JUKEBOX.title : BALLAD.title })
     for (const lamp of this.bar.lamps) this.lighting.addLamp(lamp)
     this.lighting.update(0)
     this.syncStock()
+    this.setupMusician()
+    if (useJukebox) {
+      $('jukebox-label').innerHTML = `Đang phát: ${JUKEBOX.title} <span>· ${JUKEBOX.artist} · YouTube</span>`
+      this.jukebox.onFail = () => {
+        // Không nhúng được: vịt chơi bản tổng hợp nếu quán đang mở
+        if (this.state === 'open' || this.state === 'closing') sfx.startMusic()
+      }
+      void this.jukebox.load()
+    }
     this.postfx = new PostFX(this.renderer, this.scene, this.player.camera)
     // ?nofx tắt viền toon và hậu kỳ cho máy yếu
     this.postfx.enabled = !params.has('nofx')
 
     this.economy.onChange = () => this.refreshHud()
+    this.overlay.onMute = (muted) => this.jukebox.setMuted(muted)
     this.input.onLockChange = (locked) => this.onLockChange(locked)
     window.addEventListener('resize', () => this.onResize())
 
@@ -209,6 +234,66 @@ export class Game {
     this.hud.setHint('Trưng bày nhân vật · loài lẻ là người giả')
   }
 
+  /** Vịt Sax đứng trên bục, ôm kèn, gật đầu theo từng nốt nhạc */
+  private setupMusician(): void {
+    const spot = this.bar.stageSpot
+    const duck = new Customer(duckSpec(), this.scene, spot)
+    duck.baseY = spot.y
+    duck.state = 'waiting'
+    duck.patience = Infinity
+    // Quay mặt về phía quầy
+    const yaw = Math.atan2(0.5 - spot.x, 2.9 - spot.z)
+    duck.face(yaw)
+    duck.root.rotation.y = yaw
+    duck.rig.setArms({ raise: 0.35, inward: 0.7, bend: 1.3 })
+    const sax = buildSax()
+    duck.rig.attachProp('Chest', sax.group)
+    this.saxBell = sax.bell
+    this.musician = duck
+    // Bản tổng hợp báo từng nốt; file nhạc riêng được đo mức âm trong frame()
+    sfx.onNote = (_midi, seconds) => this.pulseMusician(seconds)
+  }
+
+  private pulseMusician(seconds: number): void {
+    this.musician?.perform(seconds)
+    const bell = this.saxBell
+    if (bell) {
+      bell.scale.setScalar(1.12)
+      tweens.add({ duration: 0.25, onUpdate: (t) => bell.scale.setScalar(1.12 - 0.12 * t) })
+    }
+  }
+
+  /** Vịt gật theo nhạc: YouTube thì theo nhịp ước lượng, file riêng thì dò mức âm tăng đột ngột */
+  private updateGroove(dt: number): void {
+    if (!this.musician) return
+    this.grooveTimer -= dt
+    if (this.jukebox.playing) {
+      if (this.grooveTimer <= 0) {
+        this.pulseMusician(0.35)
+        this.grooveTimer = 60 / JUKEBOX.bpm
+      }
+      return
+    }
+    if (!sfx.usingTrack) return
+    const lv = sfx.level()
+    if (this.grooveTimer <= 0 && lv > 0.16 && lv > this.grooveLevel * 1.15) {
+      this.pulseMusician(0.3)
+      this.grooveTimer = 0.3
+    }
+    this.grooveLevel = THREE.MathUtils.damp(this.grooveLevel, lv, 4, dt)
+  }
+
+  /** Bắt đầu nhạc trong cử chỉ người dùng: YouTube nếu có, không thì bản tổng hợp / file riêng */
+  private startAmbientMusic(): void {
+    if (this.debug) return
+    sfx.unlock()
+    if (this.jukebox.enabled) {
+      this.jukebox.play()
+      return
+    }
+    sfx.startMusic()
+  }
+
   // ---------- Vòng đời ----------
 
   private showMenu(): void {
@@ -220,10 +305,7 @@ export class Game {
 
   private newGame(): void {
     // Được gọi từ click nên mở được âm thanh; chế độ debug không có cử chỉ người dùng thì bỏ qua
-    if (!this.debug) {
-      sfx.unlock()
-      sfx.startMusic()
-    }
+    this.startAmbientMusic()
     this.clearCustomers()
     this.economy.money = 200
     this.economy.reputation = 50
@@ -265,10 +347,7 @@ export class Game {
   }
 
   private openBar(): void {
-    if (!this.debug) {
-      sfx.unlock()
-      sfx.startMusic()
-    }
+    this.startAmbientMusic()
     this.overlay.hide()
     this.state = 'open'
     this.hud.setVisible(true)
@@ -569,6 +648,8 @@ export class Game {
     this.current?.update(dt)
     for (const c of this.others) c.update(dt)
     this.agent?.update(dt)
+    this.updateGroove(dt)
+    this.musician?.update(dt)
     this.dialog.update(dt)
     this.effects.update(dt)
     this.bar.update(dt)
@@ -1037,7 +1118,9 @@ export class Game {
 
     if (inp.wasPressed('KeyM')) {
       sfx.unlock()
-      toast(sfx.toggleMute() ? 'Âm thanh: tắt' : 'Âm thanh: bật', 'info', 1.4)
+      const muted = sfx.toggleMute()
+      this.jukebox.setMuted(muted)
+      toast(muted ? 'Âm thanh: tắt' : 'Âm thanh: bật', 'info', 1.4)
     }
 
     if (this.cutscene) {

@@ -2,11 +2,11 @@ import type { DrinkId } from './drinks'
 
 /** Loài khách ngẫu nhiên */
 export type CustomerSpeciesId = 'bear' | 'fox' | 'rabbit' | 'boar' | 'wolf' | 'deer'
-/** Mọi loài có model, kể cả nhân vật cốt truyện (lửng = đặc vụ, chồn = Thợ May) */
-export type SpeciesId = CustomerSpeciesId | 'badger' | 'stoat'
-export type EarShape = 'round' | 'pointed' | 'long' | 'small' | 'wide'
+/** Mọi loài có model, kể cả nhân vật cốt truyện (lửng = đặc vụ, chồn = Thợ May, vịt = nhạc công) */
+export type SpeciesId = CustomerSpeciesId | 'badger' | 'stoat' | 'duck'
+export type EarShape = 'round' | 'pointed' | 'long' | 'small' | 'wide' | 'none'
 export type TailShape = 'stub' | 'bushy' | 'puff' | 'short' | 'long' | 'flag'
-export type SnoutShape = 'long' | 'medium' | 'short' | 'flat'
+export type SnoutShape = 'long' | 'medium' | 'short' | 'flat' | 'bill'
 export type CheekStyle = 'tufts' | 'blush'
 
 export interface SpeciesDef {

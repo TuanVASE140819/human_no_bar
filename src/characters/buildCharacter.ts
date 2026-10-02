@@ -14,6 +14,13 @@ export interface HeadLook {
 
 export type Mood = 'neutral' | 'scared' | 'suspicious'
 
+/** Tư thế tay cố định (radian): giơ ra trước, khép vào giữa, gập khuỷu. Dùng cho nhạc công cầm kèn. */
+export interface ArmPose {
+  raise: number
+  inward: number
+  bend: number
+}
+
 /** Lông mày, mí mắt, độ mở mắt và miệng theo biểu cảm; dùng chung cho rig procedural và rig model. */
 class Face {
   private lidOpen = -0.6
@@ -92,6 +99,10 @@ export interface CharacterRig {
   setBlink(k: number): void
   /** Biểu cảm: bình thường, sợ (thấy súng), nghi ngờ (bị soi) */
   setMood(mood: Mood): void
+  /** Khóa hai tay vào một tư thế (null = trả lại cho animation) */
+  setArms(pose: ArmPose | null): void
+  /** Gắn đạo cụ vào xương (tọa độ không gian thân) */
+  attachProp(bone: 'Chest' | 'Head' | 'Hand.L' | 'Hand.R', obj: THREE.Object3D): void
   /** Chơi một lần cử chỉ (vẫy chào, nâng ly uống); trả về thời lượng giây */
   playOnce(name: 'Wave' | 'Drink'): number
   /** Cầm ly có màu đồ uống ở tay phải / bỏ ly */
@@ -252,6 +263,8 @@ function mouthSpot(species: SpeciesDef): { y: number; z: number } {
       return { y: -0.19, z: 0.41 }
     case 'short':
       return { y: -0.19, z: 0.37 }
+    case 'bill':
+      return { y: -0.16, z: 0.52 }
     default:
       return { y: -0.21, z: 0.36 }
   }
@@ -544,6 +557,7 @@ function addBandage(target: THREE.Object3D, x = 0, y = 0, z = 0): void {
 
 function buildEars(species: SpeciesDef, fur: THREE.Material, inner: THREE.Material): THREE.Group[] {
   const ears: THREE.Group[] = []
+  if (species.earShape === 'none') return ears
   for (const sx of [-1, 1]) {
     const g = new THREE.Group()
     switch (species.earShape) {
@@ -738,6 +752,14 @@ function buildProcedural(
       head.add(sphere(0.018, nostril, -0.035, -0.08, 0.455, 1, 1, 1, 8), sphere(0.018, nostril, 0.035, -0.08, 0.455, 1, 1, 1, 8))
       break
     }
+    case 'bill': {
+      // Mỏ vịt dẹt hai tầng, hai lỗ mũi trên sống mỏ
+      head.add(sphere(0.2, snoutM, 0, -0.12, 0.38, 1, 0.25, 1, 18))
+      head.add(sphere(0.17, snoutM, 0, -0.17, 0.35, 1, 0.2, 1, 16))
+      const nostril = mat(species.noseColor, SMOOTH)
+      head.add(sphere(0.014, nostril, -0.045, -0.075, 0.42, 1, 1, 1, 8), sphere(0.014, nostril, 0.045, -0.075, 0.42, 1, 1, 1, 8))
+      break
+    }
   }
   const setMouth = addMouth(head, species)
   const { eyes, lids } = addEyes(head, species, clues.has('plasticEyes'), fur)
@@ -746,7 +768,7 @@ function buildProcedural(
   else if (species.cheeks === 'blush') addBlush(head)
   const ears = buildEars(species, fur, innerEar)
   ears.forEach((e) => head.add(e))
-  if (clues.has('earOff')) {
+  if (clues.has('earOff') && ears.length === 2) {
     const e = ears[1]
     e.rotation.z -= 0.7
     e.position.y -= 0.1
@@ -799,6 +821,7 @@ function buildProcedural(
   let walkT = 0
   let gestureLeft = 0
   let glass: THREE.Group | null = null
+  let armPose: ArmPose | null = null
   const s = species.height
   const face = new Face(brows, lids, eyes)
   return {
@@ -812,6 +835,12 @@ function buildProcedural(
     setMouth,
     setBlink: (k) => face.setBlink(k),
     setMood: (mood) => face.setMood(mood),
+    setArms: (pose) => {
+      armPose = pose
+    },
+    attachProp: (_bone, obj) => {
+      body.add(obj)
+    },
     playOnce: (name) => {
       // Tay phải là arms[0] (phía -x). Vẫy: giơ ngang ra ngoài rồi lắc; uống: đưa tay lên miệng.
       const arm = arms[0]
@@ -857,7 +886,13 @@ function buildProcedural(
     update: (dt, moving, talking, look) => {
       idleT += dt
       gestureLeft = Math.max(0, gestureLeft - dt)
-      if (moving) {
+      if (armPose) {
+        // Tay khóa tư thế (nhạc công): tay phải là arms[0] phía -x
+        arms[0].rotation.set(armPose.raise, 0, armPose.inward)
+        arms[1].rotation.set(armPose.raise, 0, -armPose.inward)
+        for (const f of fores) f.rotation.x = -0.4 - armPose.bend
+        for (const leg of legs) leg.rotation.x = THREE.MathUtils.damp(leg.rotation.x, 0, 8, dt)
+      } else if (moving) {
         walkT += dt * 9
         const swing = Math.sin(walkT)
         legs[0].rotation.x = swing * 0.6
@@ -919,7 +954,9 @@ function buildFromModel(
     mesh.receiveShadow = false
   })
 
-  const bone = (name: string): THREE.Object3D | null => inst.root.getObjectByName(name) ?? null
+  // GLTFLoader bỏ ký tự đặc biệt trong tên node ("UpperArm.L" -> "UpperArmL"), nên thử cả hai dạng
+  const bone = (name: string): THREE.Object3D | null =>
+    inst.root.getObjectByName(name) ?? inst.root.getObjectByName(name.replace(/[^\w]/g, '')) ?? null
   const fur = mat(furColor, SMOOTH)
   const furDark = mat(darken(furColor, 0.7), SMOOTH)
   const extras: THREE.Object3D[] = []
@@ -971,12 +1008,10 @@ function buildFromModel(
     }
   }
 
-  // Tai: xương Ear.R (−x) và Ear.L (+x); manh mối tai lệch xoay xương bên +x như bản procedural
+  // Tai: xương Ear.R (−x) và Ear.L (+x). Manh mối tai lệch xoay xương bên +x; clip animation ghi đè
+  // tư thế xương mỗi khung nên góc lệch được cộng lại sau mixer.update (xem update bên dưới).
   const ears = [bone('Ear.R'), bone('Ear.L')].filter((e): e is THREE.Object3D => e !== null)
-  if (clues.has('earOff') && ears.length === 2) {
-    ears[1].rotation.z -= 0.7
-    ears[1].position.y -= 0.08
-  }
+  const earOff = clues.has('earOff') && ears.length === 2 ? ears[1] : null
 
   // Animation từ Blender: Idle / Walk / Talk trộn theo trạng thái
   const mixer = new THREE.AnimationMixer(inst.root)
@@ -997,6 +1032,14 @@ function buildFromModel(
   const oneShots = new Map<string, THREE.AnimationAction>()
   let gestureLeft = 0
   let glass: THREE.Group | null = null
+  // Tư thế tay cố định: ghi lại quaternion nghỉ của xương tay để đặt tuyệt đối sau mỗi khung animation
+  let armPose: ArmPose | null = null
+  const armBones = (['UpperArm.L', 'Forearm.L', 'UpperArm.R', 'Forearm.R'] as const).map((n) => {
+    const b = bone(n)
+    return b ? { name: n, bone: b, rest: b.quaternion.clone() } : null
+  })
+  const poseQ = new THREE.Quaternion()
+  const poseE = new THREE.Euler()
   // Ly đặt trước miệng trong lúc uống (theo đầu), tay nâng lên che bớt phần đáy
   const glassAnchor = new THREE.Group()
   glassAnchor.position.set(-0.07, -0.3, 0.4)
@@ -1018,6 +1061,12 @@ function buildFromModel(
     setMouth,
     setBlink: (k) => face.setBlink(k),
     setMood: (mood) => face.setMood(mood),
+    setArms: (pose) => {
+      armPose = pose
+    },
+    attachProp: (boneName, obj) => {
+      anchor(boneName, 0, 0, 0).add(obj)
+    },
     playOnce: (name) => {
       const clip = THREE.AnimationClip.findByName(inst.clips, name)
       if (!clip) return 0.8
@@ -1062,6 +1111,23 @@ function buildFromModel(
       if (headBone && look) {
         headBone.rotation.y += look.yaw
         headBone.rotation.x += look.pitch
+      }
+      // Tai lệch: xệ ra ngoài và tụt xuống
+      if (earOff) {
+        earOff.rotation.z -= 0.75
+        earOff.rotation.x += 0.2
+        earOff.position.y -= 0.06
+      }
+      // Tay khóa tư thế: quaternion nghỉ nhân với góc tư thế (xương tay: x âm = giơ ra trước, z = ra ngoài với tay phải)
+      if (armPose) {
+        for (const ab of armBones) {
+          if (!ab) continue
+          const left = ab.name.endsWith('.L')
+          if (ab.name.startsWith('UpperArm')) poseE.set(-armPose.raise, 0, left ? armPose.inward : -armPose.inward)
+          else poseE.set(-armPose.bend, 0, 0)
+          poseQ.setFromEuler(poseE)
+          ab.bone.quaternion.copy(ab.rest).multiply(poseQ)
+        }
       }
     },
     baseScale: species.height,

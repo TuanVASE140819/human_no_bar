@@ -173,8 +173,12 @@ export class Overlay {
     this.bind('btn-sound', () => {
       sfx.unlock()
       const muted = sfx.toggleMute()
+      this.onMute?.(muted)
       const btn = this.panel.querySelector<HTMLButtonElement>('#btn-sound')
       if (btn) btn.textContent = `Âm thanh: ${muted ? 'Tắt' : 'Bật'}`
     })
   }
+
+  /** Game gắn để đồng bộ tắt tiếng với trình phát YouTube */
+  onMute: ((muted: boolean) => void) | null = null
 }

@@ -32,6 +32,8 @@ export interface BarWorld {
   counterSpot: THREE.Vector3
   doorSpot: THREE.Vector3
   spawnSpot: THREE.Vector3
+  /** Chỗ nhạc công đứng trên bục (y = mặt bục) */
+  stageSpot: THREE.Vector3
   dispensers: Dispenser[]
   crates: CrateProp[]
   /** Đặt mức nước mục tiêu (0..1) cho bình; mức hiện tại trượt tới dần trong update */
@@ -208,6 +210,32 @@ function menuTexture(soldOut: Set<DrinkId> = new Set()): THREE.CanvasTexture {
         ctx.font = '30px "Baloo 2", "Segoe UI", sans-serif'
       }
     })
+  })
+}
+
+/** Bảng phấn "Tối nay" cạnh bục nhạc */
+function stageSignTexture(title: string, band: string): THREE.CanvasTexture {
+  return canvasTexture(384, 256, (ctx, w, h) => {
+    ctx.fillStyle = '#233524'
+    ctx.fillRect(0, 0, w, h)
+    ctx.strokeStyle = '#c9a96a'
+    ctx.lineWidth = 8
+    ctx.strokeRect(8, 8, w - 16, h - 16)
+    ctx.textAlign = 'center'
+    ctx.fillStyle = '#ffd27f'
+    ctx.font = 'bold 30px "Baloo 2", "Segoe UI", sans-serif'
+    ctx.fillText('TỐI NAY · NHẠC SỐNG', w / 2, 64)
+    ctx.fillStyle = '#f7f1e1'
+    ctx.font = 'bold 54px "Baloo 2", "Segoe UI", sans-serif'
+    ctx.fillText(band, w / 2, 136)
+    ctx.font = 'italic 32px "Baloo 2", "Segoe UI", sans-serif'
+    ctx.fillText(`“${title}”`, w / 2, 196)
+    ctx.beginPath()
+    ctx.strokeStyle = 'rgba(247,241,225,0.35)'
+    ctx.lineWidth = 2
+    ctx.moveTo(60, 160)
+    ctx.lineTo(w - 60, 160)
+    ctx.stroke()
   })
 }
 
@@ -388,7 +416,13 @@ function sconce(bulbs: THREE.MeshToonMaterial[]): THREE.Group {
   return g
 }
 
-export function buildBar(scene: THREE.Scene): BarWorld {
+export interface BarOptions {
+  /** Tên ban nhạc và bản nhạc ghi trên bảng cạnh bục */
+  stageBand?: string
+  stageTitle?: string
+}
+
+export function buildBar(scene: THREE.Scene, opts: BarOptions = {}): BarWorld {
   const group = new THREE.Group()
   scene.add(group)
 
@@ -679,7 +713,7 @@ export function buildBar(scene: THREE.Scene): BarWorld {
 
   // ---------- Bàn ghế ----------
   const tableSpots: [number, number][] = [
-    [-4.2, -2.2],
+    [-3.9, -1.9],
     [-4.2, 1.0],
     [4.3, -2.4],
     [4.3, 0.2],
@@ -721,7 +755,28 @@ export function buildBar(scene: THREE.Scene): BarWorld {
     group.add(box(0.6, 0.6, 0.6, mat(0x9c7a52), cx, cy, cz))
     group.add(box(0.62, 0.05, 0.62, mat(0x7a5a38), cx, cy + 0.2, cz, false))
   }
-  group.add(barrel(-5.45, -3.45), plant(-5.5, 3.5), plant(5.55, 1.3))
+  group.add(barrel(-5.55, -0.3), plant(-5.5, 3.5), plant(5.55, 1.3))
+
+  // ---------- Bục nhạc góc trái trước: bục gỗ, thảm đỏ, đèn rọi, bảng phấn ----------
+  const stagePos = new THREE.Vector3(-5.0, 0, -3.15)
+  group.add(placed(new THREE.CylinderGeometry(0.85, 0.9, 0.14, 24), woodDarkSmoothM, stagePos.x, 0.07, stagePos.z))
+  group.add(placed(new THREE.CylinderGeometry(0.86, 0.86, 0.02, 24), mat(LEATHER, SMOOTH), stagePos.x, 0.15, stagePos.z))
+  group.add(placed(new THREE.CylinderGeometry(0.01, 0.01, 0.5, 6), mat(0x222222), stagePos.x, H - 0.25, stagePos.z))
+  const spotShade = new THREE.Mesh(new THREE.ConeGeometry(0.24, 0.3, 18, 1, true), mat(0x2d4a3a, { side: THREE.DoubleSide, flat: false }))
+  spotShade.position.set(stagePos.x, H - 0.63, stagePos.z)
+  spotShade.castShadow = true
+  group.add(spotShade)
+  const spotBulb = glowMat(0xffe9b8, 0xffd27f)
+  group.add(placed(new THREE.SphereGeometry(0.06, 12, 10), spotBulb, stagePos.x, H - 0.72, stagePos.z))
+  lamps.push({ position: new THREE.Vector3(stagePos.x, H - 0.85, stagePos.z), bulbs: [spotBulb], intensity: 7, distance: 5, dayLevel: 0.55 })
+  const sign = new THREE.Mesh(
+    new THREE.PlaneGeometry(0.96, 0.64),
+    texMat(stageSignTexture(opts.stageTitle ?? 'Đêm Không Người', opts.stageBand ?? 'Vịt Sax')),
+  )
+  sign.position.set(-W / 2 + 0.065, 2.05, stagePos.z)
+  sign.rotation.y = Math.PI / 2
+  group.add(sign)
+  group.add(box(0.04, 0.72, 1.04, woodM, -W / 2 + 0.03, 2.05, stagePos.z))
 
   // ---------- Đèn ----------
   const sconceSpots: [number, number, number, number][] = [
@@ -788,6 +843,7 @@ export function buildBar(scene: THREE.Scene): BarWorld {
     counterSpot: new THREE.Vector3(0.5, 0, 0.55),
     doorSpot: new THREE.Vector3(0, 0, -3.6),
     spawnSpot: new THREE.Vector3(0, 0, -5.2),
+    stageSpot: new THREE.Vector3(stagePos.x, 0.16, stagePos.z),
     dispensers,
     crates,
     setLevel: (id, level) => {

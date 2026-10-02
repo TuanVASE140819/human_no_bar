@@ -369,6 +369,41 @@ body {
 }
 
 /* ---------- Toast + flash ---------- */
+/* ---------- TV của quán: trình phát YouTube nhúng, luôn nhìn thấy khi đang phát ---------- */
+#jukebox {
+  position: absolute;
+  left: 14px;
+  bottom: 14px;
+  width: 240px;
+  background: rgba(30, 20, 14, 0.88);
+  border: 2px solid var(--brass);
+  border-radius: 12px;
+  padding: 6px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+  z-index: 5;
+}
+#jukebox-player,
+#jukebox iframe {
+  display: block;
+  width: 240px;
+  height: 200px;
+  border: 0;
+  border-radius: 8px;
+  background: #000;
+}
+#jukebox .label {
+  margin-top: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--gold);
+  text-align: center;
+  line-height: 1.3;
+}
+#jukebox .label span {
+  color: var(--cream);
+  font-weight: 500;
+}
+
 #toasts {
   position: absolute;
   top: 70px;

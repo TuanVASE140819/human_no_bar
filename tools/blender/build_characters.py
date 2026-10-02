@@ -58,6 +58,10 @@ SPECIES = {
                   ear='round', earInner=0xF1E9D8, tail='long', tailTip=0x1A1A1A,
                   snout='long', mask=0xF1E9D8,
                   torso=(0.26, 0.4, 0.25), hips=(0.25, 0.15, 0.23), limb=0.85, feet='paw'),
+    # Nhạc công: vịt trắng kem, mỏ dẹt và chân màng màu cam, không tai
+    'duck': dict(fur=0xF3EFE2, belly=0xF3EFE2, snoutColor=0xF2A23A, nose=0x3A2A1A,
+                 ear='none', tail='flag', tailTip=0xF3EFE2, snout='bill',
+                 torso=(0.3, 0.4, 0.28), hips=(0.29, 0.16, 0.26), limb=0.85, feet='web', web=0xF2A23A),
 }
 
 HEAD = Vector((0.0, 1.84, 0.0))
@@ -243,6 +247,7 @@ def ear_base(spec, sx):
         'long': (0.14, 0.38, -0.02),
         'small': (0.27, 0.25, 0.0),
         'wide': (0.36, 0.17, 0.0),
+        'none': (0.25, 0.3, 0.0),
     }[spec['ear']]
     return (sx * base[0], HEAD.y + base[1], base[2])
 
@@ -343,6 +348,9 @@ def snout_region(spec):
         return (0.0, HEAD.y - 0.1, 0.3), (0.165, 0.123, 0.158)
     if kind == 'short':
         return (0.0, HEAD.y - 0.1, 0.28), (0.184, 0.128, 0.128)
+    if kind == 'bill':
+        # Mỏ vịt: dẹt, rộng, chìa ra trước
+        return (0.0, HEAD.y - 0.12, 0.38), (0.2, 0.05, 0.2)
     return (0.0, HEAD.y - 0.09, 0.33), (0.154, 0.1, 0.12)
 
 
@@ -359,6 +367,9 @@ def build_body(spec, fur, furdark, belly, snoutM, maskM):
     if spec['snout'] == 'flat':
         ell(bm, sc, sr)
         cyl(bm, (0, HEAD.y - 0.08, 0.3), (0, HEAD.y - 0.08, 0.43), 0.1, 0.11)
+    elif spec['snout'] == 'bill':
+        ell(bm, sc, sr)
+        ell(bm, (0, HEAD.y - 0.17, 0.35), (0.17, 0.035, 0.17))
     else:
         ell(bm, sc, sr)
     # Cổ, thân, hông; vai hơi nhô
@@ -453,9 +464,11 @@ def paint_masks(body, spec, snout_c, snout_r):
 
 
 def build_ears(spec, arm, fur, furdark, maskM):
+    kind = spec['ear']
+    if kind == 'none':
+        return
     inner = material('EarInner', spec['earInner']) if 'earInner' in spec else (maskM if maskM else furdark)
     tip = material('EarTip', spec['earTip']) if 'earTip' in spec else None
-    kind = spec['ear']
     for s, sx in (('L', 1), ('R', -1)):
         base = V3(ear_base(spec, sx))
         bm = bmesh.new()
@@ -557,6 +570,12 @@ def build_paws_feet(spec, arm, furdark):
             for i in (-1, 1):
                 ell(bm, (fx + i * 0.045, 0.06, 0.07), (0.05, 0.06, 0.11))
             foot = bm_to_object('FootMesh.' + s, bm, [material('Hoof', 0x2B2320)])
+        elif feet == 'web':
+            # Chân vịt: dẹt, rộng, xòe ba ngón có màng, màu cam
+            ell(bm, (fx, 0.035, 0.08), (0.11, 0.03, 0.16))
+            for i in (-1, 0, 1):
+                ell(bm, (fx + i * 0.08, 0.03, 0.24), (0.045, 0.025, 0.07), seg=12, rings=8)
+            foot = bm_to_object('FootMesh.' + s, bm, [material('Web', spec.get('web', 0xF2A23A))])
         elif feet == 'long':
             # Bàn chân thỏ dài
             ell(bm, (fx, 0.055, 0.1), (0.1, 0.05, 0.24))
@@ -604,7 +623,12 @@ def build_head_parts(spec, arm, fur, maskM, belly):
     noseM = material('Nose', spec['nose'])
     kind = spec['snout']
     bm = bmesh.new()
-    if kind == 'flat':
+    if kind == 'bill':
+        # Hai lỗ mũi nhỏ trên sống mỏ
+        ell(bm, (-0.045, HEAD.y - 0.075, 0.42), 0.014, seg=8, rings=6)
+        ell(bm, (0.045, HEAD.y - 0.075, 0.42), 0.014, seg=8, rings=6)
+        nose = bm_to_object('Nose', bm, [noseM])
+    elif kind == 'flat':
         cyl(bm, (0, HEAD.y - 0.08, 0.425), (0, HEAD.y - 0.08, 0.45), 0.1, 0.1, seg=20)
         nose = bm_to_object('Nose', bm, [noseM])
         bm = bmesh.new()
